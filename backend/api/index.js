@@ -1,5 +1,5 @@
-﻿import { db } from '../src/db/index.js';
-import { createApp } from '../src/app.js';
+import { db } from './src/db/index.js';
+import { createApp } from './src/app.js';
 
 const app = createApp();
 let initPromise = null;
