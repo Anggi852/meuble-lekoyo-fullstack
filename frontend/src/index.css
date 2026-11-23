@@ -1,0 +1,193 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-cream text-bark font-body antialiased;
+  font-size: 16px;
+  line-height: 1.65;
+  overflow-x: clip;
+  -webkit-tap-highlight-color: transparent;
+  background-image:
+    radial-gradient(at 0% 0%, rgba(198, 155, 58, 0.09) 0px, transparent 52%),
+    radial-gradient(at 100% 15%, rgba(167, 116, 66, 0.09) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(110, 63, 34, 0.05) 0px, transparent 55%);
+  background-attachment: scroll;
+}
+
+/* Hanya gunakan fixed background di desktop/laptop (menghindari bug jitter & zoom di iOS Safari / Android) */
+@media (min-width: 1024px) and (hover: hover) {
+  body { background-attachment: fixed; }
+}
+
+::selection { background: rgba(198, 155, 58, 0.28); color: #1C130E; }
+:focus-visible { outline: 2.5px solid rgba(198, 155, 58, 0.75); outline-offset: 2px; border-radius: 10px; }
+
+/* Scrollbar halus bernuansa jati & champagne */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: #F5EFE6; }
+::-webkit-scrollbar-thumb { background: #CBB69A; border-radius: 9999px; border: 2px solid #F5EFE6; }
+::-webkit-scrollbar-thumb:hover { background: #8E633E; }
+
+@layer components {
+  .font-heading { font-family: theme('fontFamily.display'); letter-spacing: -0.01em; }
+
+  .kicker {
+    @apply inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-gold-dark;
+  }
+
+  .gold-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(198, 155, 58, 0.55), transparent);
+  }
+
+  .btn {
+    @apply relative inline-flex min-h-[48px] items-center justify-center gap-2 overflow-hidden rounded-xl px-5 py-3 text-[15px] font-semibold tracking-wide transition duration-200 active:scale-[0.98];
+  }
+  .btn-primary {
+    @apply btn border border-gold/25 bg-gradient-to-br from-teak via-teak-dark to-espresso text-cream shadow-soft hover:border-gold/55 hover:shadow-lift hover:brightness-110;
+  }
+  .btn-gold {
+    @apply btn border border-gold-light/60 bg-gradient-to-br from-gold-light via-gold to-gold-dark text-espresso shadow-gold hover:brightness-105;
+  }
+  .btn-outline {
+    @apply btn border border-teak/30 bg-white/85 text-teak backdrop-blur-sm hover:border-gold hover:bg-espresso hover:text-cream;
+  }
+  .btn-soft {
+    @apply btn border border-line bg-sand/85 text-teak hover:border-gold/50 hover:bg-sand;
+  }
+
+  .field {
+    @apply w-full rounded-xl border border-line bg-white/95 px-4 py-3 text-[16px] sm:text-[15px] text-bark shadow-[inset_0_1px_2px_rgba(28,19,14,.03)] transition;
+  }
+  .field::placeholder { color: #9c8e80; }
+  .field:focus {
+    @apply outline-none border-gold;
+    box-shadow: 0 0 0 3px rgba(198, 155, 58, 0.18);
+  }
+
+  .card {
+    @apply rounded-2xl border border-line/90 bg-white/95 shadow-soft backdrop-blur-sm;
+  }
+  .card-alive {
+    @apply card transition-all duration-300 hover:-translate-y-1.5 hover:border-gold/60 hover:shadow-lift;
+  }
+  .luxury-panel {
+    @apply rounded-[1.75rem] border border-gold/25 bg-white/95 shadow-lift backdrop-blur-md;
+  }
+  .luxury-dark {
+    background: radial-gradient(circle at 18% 0%, rgba(230, 201, 122, 0.20), transparent 50%),
+                radial-gradient(circle at 88% 100%, rgba(167, 116, 66, 0.24), transparent 55%),
+                linear-gradient(155deg, #4A2B18 0%, #371F11 58%, #2B170C 100%);
+  }
+  .glass-warm {
+    background: linear-gradient(135deg, rgba(255, 253, 249, 0.94), rgba(246, 238, 226, 0.88));
+    backdrop-filter: blur(14px);
+  }
+  .section { @apply mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14; }
+}
+
+/* Tekstur serat kayu & kertas galeri halus */
+.wood-grain-bg {
+  background-image:
+    repeating-linear-gradient(
+      115deg,
+      rgba(110, 63, 34, 0.022) 0px,
+      rgba(110, 63, 34, 0.022) 2px,
+      transparent 2px,
+      transparent 16px
+    );
+}
+
+/* Efek kilau halus untuk tombol / kartu premium */
+.btn-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%) skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(246, 225, 162, 0.34), transparent);
+  animation: btnShimmer 4.8s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes btnShimmer {
+  0%, 62% { transform: translateX(-120%) skewX(-18deg); }
+  100% { transform: translateX(220%) skewX(-18deg); }
+}
+
+/* Animasi atmosfer & objek hidup */
+.kenburns { animation: kenburns 26s ease-in-out infinite alternate; will-change: transform; }
+@keyframes kenburns { from { transform: scale(1.02) translate3d(0,0,0); } to { transform: scale(1.13) translate3d(-1.5%,-1%,0); } }
+.mote { position: absolute; bottom: -12px; border-radius: 9999px; background: radial-gradient(circle, rgba(255,244,212,.95), rgba(230,201,122,.0) 70%); animation: mote linear infinite; pointer-events: none; }
+@keyframes mote { 0% { transform: translate3d(0,0,0) scale(.6); opacity: 0; } 15% { opacity: .9; } 100% { transform: translate3d(28px,-105vh,0) scale(1.1); opacity: 0; } }
+.bob { animation: bob 4.6s ease-in-out infinite; }
+@keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+.float-slow { animation: floatSlow 6.5s ease-in-out infinite; }
+@keyframes floatSlow { 0%,100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-9px) rotate(1.2deg); } }
+.draw { stroke-dasharray: 320; stroke-dashoffset: 320; animation: draw 1.1s .9s ease-out forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+/* Karakter Koyo */
+.koyo-svg { overflow: visible; }
+.koyo-svg.koyo-talk { animation: koyoTalk .52s ease-in-out infinite; transform-origin: 50% 90%; }
+@keyframes koyoTalk { 0%,100% { transform: translateY(0) rotate(-.5deg); } 50% { transform: translateY(-4px) rotate(.6deg); } }
+.koyo-sway { transform-origin: 50% 90%; animation: koyoSway 5.5s ease-in-out infinite; }
+.koyo-blink { transform-box: fill-box; transform-origin: center; animation: koyoBlink 4.8s infinite; }
+.koyo-look { transform: translate(calc(var(--lx, 0) * 1px), calc(var(--ly, 0) * 1px)); transition: transform .16s ease-out; }
+@keyframes koyoBlink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.07); } }
+@keyframes koyoSway { 0%, 100% { transform: translateY(0) rotate(-.7deg); } 50% { transform: translateY(-5px) rotate(.7deg); } }
+
+/* Gelombang suara saat Koyo berbicara */
+.voice-bar { animation: voiceBar 0.8s ease-in-out infinite alternate; transform-origin: bottom; }
+@keyframes voiceBar { 0% { transform: scaleY(0.35); opacity: 0.55; } 100% { transform: scaleY(1); opacity: 1; } }
+
+/* Pulse ring untuk tombol pemicu Koyo */
+.koyo-pulse-ring { animation: koyoPulse 2.8s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+@keyframes koyoPulse { 0% { transform: scale(1); opacity: 0.45; } 75%, 100% { transform: scale(1.28); opacity: 0; } }
+
+@keyframes caret { 50% { opacity: 0; } }
+.caret::after { content: '|'; margin-left: 2px; color: #C69B3A; animation: caret 1s steps(1) infinite; }
+
+/* Hero & pita berjalan */
+.mote-wood { background: radial-gradient(circle, rgba(198,155,58,.52), rgba(198,155,58,0) 70%); }
+.spin-slow { animation: spinSlow 22s linear infinite; transform-origin: 50% 50%; }
+@keyframes spinSlow { to { transform: rotate(360deg); } }
+.drift { animation: drift 9s ease-in-out infinite alternate; }
+@keyframes drift { from { transform: translate3d(-2%, -2%, 0) scale(1); } to { transform: translate3d(3%, 3%, 0) scale(1.07); } }
+.shine { animation: shine 6s 2.2s ease-in-out infinite; }
+@keyframes shine { 0% { transform: translateX(0) skewX(-12deg); } 35%, 100% { transform: translateX(520%) skewX(-12deg); } }
+.marker {
+  background-image: linear-gradient(transparent 64%, rgba(230, 201, 122, 0.45) 64%);
+  background-repeat: no-repeat; background-size: 0% 100%;
+  animation: marker .75s ease-out forwards;
+}
+@keyframes marker { to { background-size: 100% 100%; } }
+.marquee { animation: marquee 30s linear infinite; }
+.marquee:hover { animation-play-state: paused; }
+@keyframes marquee { to { transform: translateX(-50%); } }
+.marquee-reverse { animation: marqueeRev 36s linear infinite; }
+.marquee-reverse:hover { animation-play-state: paused; }
+@keyframes marqueeRev { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+
+details > summary { list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}
+
+/* Utilitas responsif lintas perangkat (Android, iOS notch/home bar, tablet, laptop) */
+.safe-pt { padding-top: env(safe-area-inset-top, 0px); }
+.safe-pb { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Matikan efek hover-lift di layar sentuh agar kartu tidak "nyangkut" saat di-tap di HP */
+@media (hover: none) {
+  .card-alive:hover { transform: none !important; }
+}
