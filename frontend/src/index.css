@@ -2,16 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light only;
+}
+
 html {
+  color-scheme: light only;
   scroll-behavior: smooth;
   overflow-x: clip;
   -webkit-text-size-adjust: 100%;
-  :root {
-  color-scheme: light only;
-}
 }
 
 body {
+  color-scheme: light only;
   @apply bg-cream text-bark font-body antialiased;
   font-size: 16px;
   line-height: 1.65;
@@ -22,9 +25,6 @@ body {
     radial-gradient(at 100% 15%, rgba(167, 116, 66, 0.09) 0px, transparent 50%),
     radial-gradient(at 50% 100%, rgba(110, 63, 34, 0.05) 0px, transparent 55%);
   background-attachment: scroll;
-  :root {
-  color-scheme: light only;
-}
 }
 
 /* Hanya gunakan fixed background di desktop/laptop (menghindari bug jitter & zoom di iOS Safari / Android) */
