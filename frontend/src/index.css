@@ -2,19 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: light dark;
-}
-
 html {
-  color-scheme: light dark;
   scroll-behavior: smooth;
   overflow-x: clip;
   -webkit-text-size-adjust: 100%;
+  :root {
+  color-scheme: light only;
+}
 }
 
 body {
-  color-scheme: light dark;
   @apply bg-cream text-bark font-body antialiased;
   font-size: 16px;
   line-height: 1.65;
@@ -25,11 +22,85 @@ body {
     radial-gradient(at 100% 15%, rgba(167, 116, 66, 0.09) 0px, transparent 50%),
     radial-gradient(at 50% 100%, rgba(110, 63, 34, 0.05) 0px, transparent 55%);
   background-attachment: scroll;
+  :root {
+  color-scheme: light only;
+}
 }
 
-/* Hanya gunakan fixed background di desktop/laptop (menghindari bug jitter & zoom di iOS Safari / Android) */
-@media (min-width: 1024px) and (hover: hover) {
-  body { background-attachment: fixed; }
+/* Mode Gelap Resmi: kontras tinggi & tetap bernuansa kayu jati elegan */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #16100C !important;
+    color: #F5EFE6 !important;
+  }
+
+  /* Tangkap SEMUA variasi latar putih, krem, dan pasir agar tidak ada tombol putih polos */
+  header,
+  nav,
+  [class*="bg-white"],
+  [class*="bg-cream"],
+  [class*="bg-sand"],
+  [class*="bg-stone-50"],
+  [class*="bg-stone-100"] {
+    background-color: #241A14 !important;
+    border-color: rgba(230, 201, 122, 0.22) !important;
+    color: #F5EFE6 !important;
+  }
+
+  .card,
+  .card-alive,
+  .luxury-panel,
+  .glass-warm {
+    background: #231913 !important;
+    border-color: rgba(230, 201, 122, 0.22) !important;
+    color: #F5EFE6 !important;
+  }
+
+  .text-bark,
+  .text-espresso,
+  .text-teak,
+  .text-teak-dark,
+  .text-stone-900,
+  .text-stone-800,
+  .text-neutral-900,
+  .text-neutral-800 {
+    color: #F5EFE6 !important;
+  }
+
+  .text-bark\/80,
+  .text-bark\/75,
+  .text-bark\/70,
+  .text-teak\/80,
+  .text-stone-600,
+  .text-stone-500 {
+    color: #D6C8B8 !important;
+  }
+
+  .btn-gold,
+  .btn-gold * {
+    color: #1C130E !important;
+  }
+
+  .field {
+    background-color: #1C140F !important;
+    border-color: rgba(230, 201, 122, 0.28) !important;
+    color: #FFFDF9 !important;
+  }
+  .field::placeholder {
+    color: #B8A99A !important;
+  }
+
+  .btn-outline,
+  .btn-soft {
+    background-color: #2A1E17 !important;
+    border-color: rgba(230, 201, 122, 0.35) !important;
+    color: #F5EFE6 !important;
+  }
+
+  /* Teks ukuran di pratinjau custom (SVG) harus GELAP karena kanvas gambarnya krem terang */
+  svg text {
+    fill: #2B170C !important;
+  }
 }
 
 ::selection { background: rgba(198, 155, 58, 0.28); color: #1C130E; }
@@ -196,77 +267,4 @@ details > summary::-webkit-details-marker { display: none; }
 /* Matikan efek hover-lift di layar sentuh agar kartu tidak "nyangkut" saat di-tap di HP */
 @media (hover: none) {
   .card-alive:hover { transform: none !important; }
-}
-
-/* Mode Gelap Resmi: kontras tinggi & tetap bernuansa kayu jati elegan */
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: #16100C !important;
-    color: #F5EFE6 !important;
-  }
-
-  header,
-  nav,
-  .bg-cream,
-  .bg-sand,
-  .bg-white\/80,
-  .bg-white\/90,
-  .bg-white\/95 {
-    background-color: #1E1510 !important;
-    border-color: rgba(230, 201, 122, 0.18) !important;
-  }
-
-  .card,
-  .card-alive,
-  .luxury-panel,
-  .glass-warm {
-    background: #231913 !important;
-    border-color: rgba(230, 201, 122, 0.22) !important;
-    color: #F5EFE6 !important;
-  }
-
-  .text-bark,
-  .text-espresso,
-  .text-teak,
-  .text-teak-dark,
-  .text-stone-900,
-  .text-stone-800,
-  .text-neutral-900,
-  .text-neutral-800 {
-    color: #F5EFE6 !important;
-  }
-
-  .text-bark\/80,
-  .text-bark\/75,
-  .text-bark\/70,
-  .text-teak\/80,
-  .text-stone-600,
-  .text-stone-500 {
-    color: #D6C8B8 !important;
-  }
-
-  .btn-gold,
-  .btn-gold * {
-    color: #1C130E !important;
-  }
-
-  .field {
-    background-color: #1C140F !important;
-    border-color: rgba(230, 201, 122, 0.28) !important;
-    color: #FFFDF9 !important;
-  }
-  .field::placeholder {
-    color: #B8A99A !important;
-  }
-
-  .btn-outline,
-  .btn-soft {
-    background-color: #2A1E17 !important;
-    border-color: rgba(230, 201, 122, 0.35) !important;
-    color: #F5EFE6 !important;
-  }
-
-  svg text {
-    fill: #FFFDF9 !important;
-  }
 }
