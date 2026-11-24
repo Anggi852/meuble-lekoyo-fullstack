@@ -400,25 +400,30 @@ export default function Custom() {
                 <strong className="text-espresso">{t.name}:</strong> {t.tagline}
               </p>
 
-              {t.presets && t.presets.length > 0 && (
+{t.presets && t.presets.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-line/70 pt-3.5">
                   <span className="inline-flex items-center gap-1 text-xs font-bold text-wood">
                     <Wand2 size={13} /> Contoh populer:
                   </span>
-                  {t.presets.map((pr) => (
-                    <button
-                      key={pr.name}
-                      type="button"
-                      onClick={() => applyPreset(pr)}
-                      className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition ${
-                        activePreset === pr.name
-                          ? 'border-teak bg-sand text-teak shadow-soft'
-                          : 'border-line bg-white text-bark hover:border-teak hover:bg-cream'
-                      }`}
-                    >
-                      {pr.name}
-                    </button>
-                  ))}
+                  {t.presets.map((pr) => {
+                    const isActive = activePreset === pr.name;
+                    return (
+                      <button
+                        key={pr.name}
+                        type="button"
+                        onClick={() => applyPreset(pr)}
+                        aria-pressed={isActive}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition ${
+                          isActive
+                            ? 'border-gold/70 bg-gradient-to-br from-teak to-teak-dark text-white shadow-soft'
+                            : 'border-line bg-white text-bark hover:border-teak hover:bg-cream'
+                        }`}
+                      >
+                        {isActive && <Check size={13} className="text-gold-light" />}
+                        {pr.name}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
