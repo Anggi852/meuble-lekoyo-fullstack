@@ -4,7 +4,14 @@ import { products as seedProducts } from '../data/products';
 import { getProductImages } from '../utils/image';
 import { defaultFaqs, defaultTestimonials } from '../data/content';
 import { defaultCustomPortfolio } from '../data/customPortfolio';
-import { api, extractApiError, getStoredToken, setStoredToken } from '../services/api';
+import {
+  api,
+  extractApiError,
+  getStoredToken,
+  setStoredToken,
+  getStoredUser,
+  setStoredUser,
+} from '../services/api';
 
 const AppContext = createContext();
 
@@ -23,7 +30,12 @@ const upsert = (list, item) =>
     : [{ ...item, id: item.id || Date.now() }, ...list];
 
 export function AppProvider({ children }) {
-  const [isLoggedIn, setLoggedInState] = useState(() => Boolean(getStoredToken()));
+  const [user, setUserState] = useState(() => getStoredUser());
+  const [isLoggedIn, setLoggedInState] = useState(() => {
+    const token = getStoredToken();
+    const u = getStoredUser();
+    return Boolean(token && (!u || u.role === 'owner'));
+  });
   const [backendOnline, setBackendOnline] = useState(true);
   const [apiLoading, setApiLoading] = useState(true);
 
@@ -33,6 +45,7 @@ export function AppProvider({ children }) {
   const [customPortfolio, setCustomPortfolio] = useState(defaultCustomPortfolio);
   const [chatLogs, setChatLogs] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [myOrders, setMyOrders] = useState([]);
   const [sales, setSales] = useState([]);
   const [views, setViews] = useState({});
   const [visits, setVisits] = useState(0);
@@ -91,8 +104,25 @@ export function AppProvider({ children }) {
     } catch (err) {
       if (err?.response?.status === 401) {
         setStoredToken('');
+        setStoredUser(null);
+        setUserState(null);
         setLoggedInState(false);
       }
+    }
+  }, []);
+
+  // Muat riwayat pesanan milik Customer yang sedang login Google
+  const loadMyOrders = useCallback(async () => {
+    if (!getStoredToken()) {
+      setMyOrders([]);
+      return [];
+    }
+    try {
+      const list = await api.getMyOrders();
+      setMyOrders(list || []);
+      return list || [];
+    } catch {
+      return [];
     }
   }, []);
 
@@ -113,26 +143,65 @@ export function AppProvider({ children }) {
     loadPublicData();
   }, [loadPublicData]);
 
+  // Sinkronkan sesi token saat pertama kali buka aplikasi
+  useEffect(() => {
+    const token = getStoredToken();
+    if (!token) return;
+    api
+      .me()
+      .then((me) => {
+        setUserState(me);
+        setStoredUser(me);
+        setLoggedInState(me?.role === 'owner');
+        loadMyOrders();
+      })
+      .catch(() => {
+        setStoredToken('');
+        setStoredUser(null);
+        setUserState(null);
+        setLoggedInState(false);
+      });
+  }, [loadMyOrders]);
+
   useEffect(() => {
     if (isLoggedIn) loadAdminData();
   }, [isLoggedIn, loadAdminData]);
 
   const loginAdmin = async (password) => {
     const res = await api.login(password);
+    const ownerUser = { role: 'owner', name: res.owner || 'Owner', email: '' };
     setStoredToken(res.token);
+    setStoredUser(ownerUser);
+    setUserState(ownerUser);
     setLoggedInState(true);
     setBackendOnline(true);
     return res;
   };
 
-  const logoutAdmin = () => {
-    setStoredToken('');
-    setLoggedInState(false);
+  const loginWithGoogle = async (credential) => {
+    const res = await api.loginGoogle(credential);
+    setStoredToken(res.token);
+    setStoredUser(res.user);
+    setUserState(res.user);
+    setLoggedInState(res.user?.role === 'owner');
+    setBackendOnline(true);
+    loadMyOrders();
+    return res;
   };
+
+  const logoutUser = () => {
+    setStoredToken('');
+    setStoredUser(null);
+    setUserState(null);
+    setLoggedInState(false);
+    setMyOrders([]);
+  };
+
+  const logoutAdmin = logoutUser;
 
   // Kompatibilitas setter lama
   const setIsLoggedIn = (v) => {
-    if (!v) logoutAdmin();
+    if (!v) logoutUser();
     else setLoggedInState(true);
   };
 
@@ -290,20 +359,21 @@ export function AppProvider({ children }) {
     try {
       const created = await api.createOrder(order);
       setOrders((prev) => [created, ...prev]);
+      if (user?.email) {
+        setMyOrders((prev) => [created, ...prev]);
+      }
       return created;
     } catch (err) {
       const status = err?.response?.status;
-      // Tolak keras bila kena validasi Joi (400) atau anti-spam rate limit (429)
       if (status === 400 || status === 429) {
         toast.error(extractApiError(err, 'Pengajuan pesanan ditolak.'));
         throw err;
       }
-      // Hanya fallback bila server lokal sedang offline
       toast.error(extractApiError(err, 'Server sedang offline; pengajuan tetap dapat dilanjutkan ke WhatsApp.'));
       const fallback = {
         ...order,
         id: Date.now(),
-        status: 'Menunggu Konfirmasi WA',
+        status: 'Menunggu Harga Owner',
         createdAt: new Date().toISOString(),
       };
       setOrders((prev) => [fallback, ...prev]);
@@ -419,10 +489,14 @@ export function AppProvider({ children }) {
   };
 
   const value = {
+    user,
+    isOwner: isLoggedIn,
     isLoggedIn,
     setIsLoggedIn,
     loginAdmin,
+    loginWithGoogle,
     logoutAdmin,
+    logoutUser,
     backendOnline,
     apiLoading,
     products,
@@ -442,6 +516,8 @@ export function AppProvider({ children }) {
     sendKoyoMessage,
     clearChatLogs,
     orders,
+    myOrders,
+    loadMyOrders,
     addOrder,
     updateOrderStatus,
     updateOrder,

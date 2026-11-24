@@ -1,5 +1,16 @@
 import { useState } from 'react';
-import { ShoppingBag, MapPin, Wallet, History, Phone, MessageCircle, ShieldCheck } from 'lucide-react';
+import {
+  ShoppingBag,
+  MapPin,
+  Wallet,
+  History,
+  Phone,
+  MessageCircle,
+  ShieldCheck,
+  Tag,
+  CheckCircle2,
+  Mail,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useApp } from '../../context/AppContext';
 import { PageHeader, RowActions, confirmDelete } from '../../components/admin/ui';
@@ -7,14 +18,114 @@ import { formatRupiah } from '../../utils/format';
 import { customKey } from '../../utils/sales';
 import { buildCustomerWhatsAppReplyLink } from '../../utils/phone';
 
-const statuses = ['Menunggu Konfirmasi WA', 'Diproses', 'Selesai', 'Dibatalkan'];
-const normalizeStatus = (s) => (s === 'Baru' ? 'Menunggu Konfirmasi WA' : s);
+const statuses = [
+  'Menunggu Harga Owner',
+  'Harga Ditetapkan',
+  'Menunggu Konfirmasi WA',
+  'Diproses',
+  'Selesai',
+  'Dibatalkan',
+];
+
+const normalizeStatus = (s) => (s === 'Baru' ? 'Menunggu Harga Owner' : s);
+
 const tone = {
+  'Menunggu Harga Owner': 'bg-amber-100 text-amber-800 border border-amber-300',
+  'Harga Ditetapkan': 'bg-blue-100 text-blue-800 border border-blue-300',
   'Menunggu Konfirmasi WA': 'bg-gold/20 text-[#7a5e00] border border-gold/40',
   Diproses: 'bg-sand text-teak',
   Selesai: 'bg-green-100 text-green-800',
   Dibatalkan: 'bg-red-50 text-red-700',
 };
+
+function OwnerPricingBox({ order, onSave }) {
+  const [priceInput, setPriceInput] = useState(
+    order.finalPrice != null ? String(order.finalPrice) : String(order.estimatedPrice || order.total || ''),
+  );
+  const [noteInput, setNoteInput] = useState(order.ownerNote || '');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const numericPrice = Number(String(priceInput).replace(/[^\d]/g, ''));
+    if (!numericPrice || numericPrice <= 0) {
+      toast.error('Masukkan nominal harga final yang valid.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(order.id, {
+        finalPrice: numericPrice,
+        ownerNote: noteInput.trim(),
+      });
+      toast.success(`Harga final ${order.orderCode || `#${order.id}`} disimpan.`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={handleSave}
+      className="mt-4 rounded-xl border border-gold/35 bg-sand/40 p-3.5 sm:p-4"
+    >
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-sm font-bold text-espresso">
+          <Tag size={15} className="text-gold-dark" /> Penetapan Harga Final Owner
+        </p>
+        {order.finalPrice != null && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+            <CheckCircle2 size={13} /> Ditetapkan: {formatRupiah(order.finalPrice)}
+          </span>
+        )}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-muted">
+            Harga Final (Rp)
+          </label>
+          <input
+            type="number"
+            min="0"
+            step="50000"
+            value={priceInput}
+            onChange={(e) => setPriceInput(e.target.value)}
+            placeholder="Contoh: 4500000"
+            className="field !py-2 text-sm"
+          />
+          {order.estimatedPrice > 0 && (
+            <p className="mt-1 text-[11px] text-muted">
+              Estimasi awal: {formatRupiah(order.estimatedPrice)}
+            </p>
+          )}
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="mb-1 block text-xs font-medium text-muted">
+            Catatan untuk Pelanggan (tampil di halaman Pesanan Saya)
+          </label>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              type="text"
+              value={noteInput}
+              onChange={(e) => setNoteInput(e.target.value)}
+              placeholder="Contoh: Harga sudah termasuk ongkir Kota Jambi & finishing melamin"
+              className="field flex-1 !py-2 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={saving}
+              className="btn-primary !min-h-[40px] shrink-0 !px-4 text-sm"
+            >
+              {saving ? 'Menyimpan...' : 'Simpan Harga'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </form>
+  );
+}
 
 export default function Orders() {
   const { orders, updateOrderStatus, updateOrder, removeOrder } = useApp();
@@ -28,7 +139,7 @@ export default function Orders() {
     <div>
       <PageHeader
         title="Pesanan masuk"
-        desc="Setiap pengajuan formulir masuk dengan status Menunggu Konfirmasi WA. Omzet & laporan penjualan hanya menghitung pesanan berstatus Selesai."
+        desc="Setiap pengajuan masuk dengan kode unik dan menunggu penetapan harga dari owner. Omzet & laporan penjualan hanya menghitung pesanan berstatus Selesai."
       />
 
       <div className="mb-5 flex items-start gap-3 rounded-2xl border border-sage/30 bg-white/95 p-4 shadow-soft">
@@ -36,7 +147,7 @@ export default function Orders() {
           <ShieldCheck size={18} />
         </span>
         <p className="text-sm leading-relaxed text-muted">
-          <strong className="text-espresso">Anti-pesanan iseng aktif:</strong> formulir kini mewajibkan nomor WhatsApp valid, checkbox komitmen, dan pembatas maksimal 3 pengajuan / 15 menit. Bila pemesan tidak menindaklanjuti di WhatsApp, cukup ubah status ke <strong>Dibatalkan</strong> atau hapus.
+          <strong className="text-espresso">Anti-pesanan iseng aktif:</strong> formulir mewajibkan nomor WhatsApp valid, checkbox komitmen, dan pembatas maksimal 3 pengajuan / 15 menit. Bila pemesan tidak menindaklanjuti di WhatsApp, ubah status ke <strong>Dibatalkan</strong> atau hapus.
         </p>
       </div>
 
@@ -84,16 +195,24 @@ export default function Orders() {
             const sameDone = same.filter((x) => x.status === 'Selesai' || x.madeBefore).length;
             const last = same[0];
             const noteFromPast = same.find((x) => x.madeNote)?.madeNote;
+
             return (
               <article key={o.id} className="luxury-panel p-4 sm:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-semibold">
+                    <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                      {o.orderCode && (
+                        <span className="rounded-lg bg-espresso px-2.5 py-0.5 font-mono text-xs font-bold tracking-wider text-gold-light">
+                          {o.orderCode}
+                        </span>
+                      )}
                       {o.custom && (
-                        <span className="mr-2 rounded-full bg-gold/20 px-2.5 py-0.5 align-middle text-xs font-bold text-teak-dark">
+                        <span className="rounded-full bg-gold/20 px-2.5 py-0.5 text-xs font-bold text-teak-dark">
                           CUSTOM
                         </span>
                       )}
+                    </div>
+                    <h2 className="text-lg font-semibold">
                       {o.product} <span className="font-normal text-muted">x{o.quantity}</span>
                     </h2>
                     <p className="text-sm text-muted">
@@ -164,6 +283,11 @@ export default function Orders() {
                   <div>
                     <dt className="text-sm text-muted">Pemesan</dt>
                     <dd className="font-medium">{o.name}</dd>
+                    {o.customerEmail && (
+                      <dd className="mt-0.5 flex items-center gap-1 text-xs text-muted">
+                        <Mail size={12} /> {o.customerEmail}
+                      </dd>
+                    )}
                   </div>
                   <div>
                     <dt className="flex items-center gap-1 text-sm text-muted"><Phone size={14} /> WhatsApp</dt>
@@ -172,15 +296,34 @@ export default function Orders() {
                   <div>
                     <dt className="flex items-center gap-1 text-sm text-muted"><MapPin size={14} /> Alamat</dt>
                     <dd className="font-medium">{o.address}</dd>
+                    {o.latitude != null && o.longitude != null && (
+                      <dd className="mt-1">
+                        <a
+                          href={`https://www.google.com/maps?q=${o.latitude},${o.longitude}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-teak underline"
+                        >
+                          <MapPin size={12} /> Buka Titik Maps
+                        </a>
+                      </dd>
+                    )}
                   </div>
                   <div>
                     <dt className="flex items-center gap-1 text-sm text-muted"><Wallet size={14} /> Pembayaran</dt>
                     <dd className="font-medium">
                       {o.payment}
-                      {o.total > 0 ? ` · ${formatRupiah(o.total)}` : ' · harga via WhatsApp'}
+                      {o.finalPrice != null
+                        ? ` · Final ${formatRupiah(o.finalPrice)}`
+                        : o.total > 0
+                          ? ` · Est. ${formatRupiah(o.total)}`
+                          : ' · harga via Owner'}
                     </dd>
                   </div>
                 </dl>
+
+                {/* Kotak Penetapan Harga Final Owner */}
+                <OwnerPricingBox order={o} onSave={updateOrder} />
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
                   <div className="flex flex-wrap items-center gap-2.5">

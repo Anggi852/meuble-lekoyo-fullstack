@@ -8,11 +8,12 @@ export const API_ROOT_URL = API_BASE_URL.replace(/\/api\/v1$/, '');
 export const SWAGGER_DOCS_URL = `${API_ROOT_URL}/api-docs`;
 export const STREAMLIT_ENV_URL = (import.meta.env.VITE_STREAMLIT_URL || '').trim();
 
-const TOKEN_KEY = 'lekoyo_admin_token';
+const TOKEN_KEY = 'lekoyo_auth_token';
+const USER_KEY = 'lekoyo_auth_user';
 
 export const getStoredToken = () => {
   try {
-    return sessionStorage.getItem(TOKEN_KEY) || '';
+    return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem('lekoyo_admin_token') || '';
   } catch {
     return '';
   }
@@ -20,8 +21,31 @@ export const getStoredToken = () => {
 
 export const setStoredToken = (token) => {
   try {
-    if (token) sessionStorage.setItem(TOKEN_KEY, token);
-    else sessionStorage.removeItem(TOKEN_KEY);
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.setItem('lekoyo_admin_token', token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem('lekoyo_admin_token');
+    }
+  } catch {
+    /* abaikan */
+  }
+};
+
+export const getStoredUser = () => {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const setStoredUser = (user) => {
+  try {
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+    else localStorage.removeItem(USER_KEY);
   } catch {
     /* abaikan */
   }
@@ -35,7 +59,7 @@ export const http = axios.create({
   },
 });
 
-// Otomatis kirim token Bearer owner untuk endpoint yang dilindungi
+// Otomatis kirim token Bearer (Customer maupun Owner)
 http.interceptors.request.use((config) => {
   const token = getStoredToken();
   if (token) {
@@ -59,7 +83,7 @@ export function extractApiError(err, fallback = 'Terjadi kendala saat menghubung
     return `${data.message || 'Data tidak valid:'} (${data.details[0].message})`;
   }
   if (status === 401) {
-    return data?.message || 'Sesi owner berakhir. Silakan login kembali.';
+    return data?.message || 'Sesi berakhir. Silakan login kembali.';
   }
   if (status === 429) {
     return 'Permintaan sedang padat atau batas kuota layanan tercapai. Coba lagi sebentar.';
@@ -72,8 +96,9 @@ export const api = {
   health: () => http.get('/health').then((r) => r.data),
   bootstrap: () => http.get('/bootstrap').then((r) => r.data.data),
 
-  // Auth
+  // Auth (Owner Password & Google Customer/Owner)
   login: (password) => http.post('/auth/login', { password }).then((r) => r.data.data),
+  loginGoogle: (credential) => http.post('/auth/google', { credential }).then((r) => r.data.data),
   me: () => http.get('/auth/me').then((r) => r.data.data),
 
   // Products
@@ -93,6 +118,7 @@ export const api = {
 
   // Orders
   getOrders: () => http.get('/orders').then((r) => r.data.data),
+  getMyOrders: () => http.get('/orders/me').then((r) => r.data.data),
   createOrder: (payload) => http.post('/orders', payload).then((r) => r.data.data),
   updateOrder: (id, patch) => http.patch(`/orders/${id}`, patch).then((r) => r.data.data),
   deleteOrder: (id) => http.delete(`/orders/${id}`).then((r) => r.data),

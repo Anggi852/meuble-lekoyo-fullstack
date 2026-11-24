@@ -1,8 +1,11 @@
 import { Link, NavLink } from 'react-router-dom';
-import { Menu, X, MessageCircle, Heart, Sparkles } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Menu, X, MessageCircle, Heart, Sparkles, User, LogOut, ClipboardList, ShieldCheck } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { GoogleLogin } from '@react-oauth/google';
+import { toast } from 'sonner';
 import { useApp } from '../context/AppContext';
+import { extractApiError } from '../services/api';
 import { WA_BASE } from '../services/whatsapp';
 
 const navItems = [
@@ -37,8 +40,11 @@ export function LogoMark({ size = 38 }) {
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const { wishlist, openKoyoWith } = useApp();
+  const accountRef = useRef(null);
+
+  const { wishlist, openKoyoWith, user, isOwner, loginWithGoogle, logoutUser, myOrders } = useApp();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -46,6 +52,38 @@ export default function Navbar() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  useEffect(() => {
+    const onClickOutside = (e) => {
+      if (accountRef.current && !accountRef.current.contains(e.target)) {
+        setAccountOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    try {
+      const res = await loginWithGoogle(credentialResponse.credential);
+      setAccountOpen(false);
+      setOpen(false);
+      toast.success(
+        res?.user?.role === 'owner'
+          ? `Selamat datang, Owner (${res.user.name})!`
+          : `Berhasil masuk sebagai ${res?.user?.name || 'Pelanggan'}.`,
+      );
+    } catch (err) {
+      toast.error(extractApiError(err, 'Gagal masuk dengan Google.'));
+    }
+  };
+
+  const handleLogout = () => {
+    logoutUser();
+    setAccountOpen(false);
+    setOpen(false);
+    toast.success('Anda telah keluar dari akun.');
+  };
 
   const badge = wishlist.length > 0 && (
     <motion.span
@@ -89,7 +127,7 @@ export default function Navbar() {
                 to={item.path}
                 end={item.end}
                 className={({ isActive }) =>
-                  `relative rounded-xl px-4 py-2 text-[15px] font-medium transition ${
+                  `relative rounded-xl px-3.5 py-2 text-[15px] font-medium transition ${
                     isActive ? 'font-semibold text-espresso' : 'text-muted hover:text-espresso'
                   }`
                 }
@@ -110,23 +148,153 @@ export default function Navbar() {
               </NavLink>
             ))}
 
-            <div className="mx-2 h-6 w-px bg-line" aria-hidden="true" />
+            {user && (
+              <NavLink
+                to="/my-orders"
+                className={({ isActive }) =>
+                  `relative rounded-xl px-3.5 py-2 text-[15px] font-medium transition ${
+                    isActive ? 'font-semibold text-espresso' : 'text-muted hover:text-espresso'
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    {isActive && (
+                      <motion.span
+                        layoutId="nav-active-pill"
+                        transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                        className="absolute inset-0 -z-10 rounded-xl border border-gold/35 bg-sand/85 shadow-[inset_0_1px_0_rgba(255,255,255,.7)]"
+                      />
+                    )}
+                    Pesanan Saya
+                    {myOrders.length > 0 && (
+                      <span className="ml-1.5 inline-grid h-5 min-w-5 place-items-center rounded-full bg-teak px-1 text-[11px] font-bold text-cream">
+                        {myOrders.length}
+                      </span>
+                    )}
+                  </>
+                )}
+              </NavLink>
+            )}
+
+            <div className="mx-1.5 h-6 w-px bg-line" aria-hidden="true" />
 
             <button
               type="button"
               onClick={() => openKoyoWith()}
-              className="btn-soft !min-h-[42px] !px-4 !py-2 text-sm"
+              className="btn-soft !min-h-[40px] !px-3.5 !py-2 text-sm"
             >
               <Sparkles size={15} className="text-gold-dark" /> Tanya Koyo
             </button>
+
             <a
               href={WA_BASE}
               target="_blank"
               rel="noreferrer"
-              className="btn-primary btn-shimmer ml-1.5 !min-h-[42px] !px-4 !py-2 text-sm"
+              className="btn-primary btn-shimmer ml-1 !min-h-[40px] !px-3.5 !py-2 text-sm"
             >
-              <MessageCircle size={16} className="text-gold-light" /> Hubungi Kami
+              <MessageCircle size={16} className="text-gold-light" /> WA
             </a>
+
+            {/* Akun / Login Google */}
+            <div className="relative ml-1" ref={accountRef}>
+              <button
+                type="button"
+                onClick={() => setAccountOpen((v) => !v)}
+                className="flex items-center gap-2 rounded-xl border border-gold/35 bg-sand/80 px-3 py-2 text-sm font-semibold text-espresso transition hover:bg-sand"
+                aria-expanded={accountOpen}
+              >
+                {user?.picture ? (
+                  <img
+                    src={user.picture}
+                    alt={user.name}
+                    className="h-6 w-6 rounded-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <User size={16} className="text-teak" />
+                )}
+                <span className="max-w-[90px] truncate">
+                  {user ? user.name?.split(' ')[0] || 'Akun' : 'Masuk'}
+                </span>
+              </button>
+
+              {accountOpen && (
+                <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-gold/30 bg-cream p-4 shadow-xl">
+                  {user ? (
+                    <div className="space-y-3">
+                      <div className="border-b border-line pb-3">
+                        <div className="flex items-center gap-2.5">
+                          {user.picture ? (
+                            <img
+                              src={user.picture}
+                              alt={user.name}
+                              className="h-9 w-9 rounded-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="grid h-9 w-9 place-items-center rounded-full bg-sand text-teak">
+                              <User size={18} />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-espresso">{user.name}</p>
+                            {user.email && <p className="truncate text-xs text-muted">{user.email}</p>}
+                          </div>
+                        </div>
+                        {isOwner && (
+                          <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-gold/25 px-2.5 py-0.5 text-[11px] font-bold text-espresso">
+                            <ShieldCheck size={12} /> Akun Owner
+                          </span>
+                        )}
+                      </div>
+
+                      <Link
+                        to="/my-orders"
+                        onClick={() => setAccountOpen(false)}
+                        className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-espresso transition hover:bg-sand"
+                      >
+                        <ClipboardList size={16} className="text-teak" /> Pesanan Saya
+                      </Link>
+
+                      {isOwner && (
+                        <Link
+                          to="/admin"
+                          onClick={() => setAccountOpen(false)}
+                          className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-espresso transition hover:bg-sand"
+                        >
+                          <ShieldCheck size={16} className="text-gold-dark" /> Portal Owner
+                        </Link>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
+                      >
+                        <LogOut size={16} /> Keluar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 text-center">
+                      <p className="text-xs leading-relaxed text-muted">
+                        Masuk dengan akun Google untuk memantau status pesanan &amp; penetapan harga dari owner.
+                      </p>
+                      <div className="flex justify-center">
+                        <GoogleLogin
+                          onSuccess={handleGoogleSuccess}
+                          onError={() => toast.error('Login Google dibatalkan atau gagal.')}
+                          useOneTap={false}
+                          shape="pill"
+                          text="signin_with"
+                          locale="id"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-1 md:hidden">
@@ -178,6 +346,64 @@ export default function Navbar() {
                 {item.name}
               </NavLink>
             ))}
+
+            {user && (
+              <NavLink
+                to="/my-orders"
+                onClick={() => setOpen(false)}
+                className={({ isActive }) =>
+                  `block rounded-xl px-4 py-3 text-base font-medium ${
+                    isActive ? 'border border-gold/30 bg-sand font-semibold text-espresso' : 'text-bark'
+                  }`
+                }
+              >
+                Pesanan Saya {myOrders.length > 0 ? `(${myOrders.length})` : ''}
+              </NavLink>
+            )}
+
+            {isOwner && (
+              <NavLink
+                to="/admin"
+                onClick={() => setOpen(false)}
+                className="block rounded-xl px-4 py-3 text-base font-medium text-bark"
+              >
+                Portal Owner
+              </NavLink>
+            )}
+
+            {/* Bagian Akun Google di Menu HP */}
+            <div className="my-2 rounded-xl border border-gold/25 bg-sand/50 p-3">
+              {user ? (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-espresso">{user.name}</p>
+                    {user.email && <p className="truncate text-xs text-muted">{user.email}</p>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600"
+                  >
+                    <LogOut size={14} /> Keluar
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <p className="text-center text-xs text-muted">
+                    Masuk dengan Google untuk pantau pesanan &amp; harga owner
+                  </p>
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={() => toast.error('Login Google dibatalkan atau gagal.')}
+                    useOneTap={false}
+                    shape="pill"
+                    text="signin_with"
+                    locale="id"
+                  />
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={() => {

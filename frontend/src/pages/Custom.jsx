@@ -400,7 +400,7 @@ export default function Custom() {
                 <strong className="text-espresso">{t.name}:</strong> {t.tagline}
               </p>
 
-{t.presets && t.presets.length > 0 && (
+              {t.presets && t.presets.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-line/70 pt-3.5">
                   <span className="inline-flex items-center gap-1 text-xs font-bold text-wood">
                     <Wand2 size={13} /> Contoh populer:

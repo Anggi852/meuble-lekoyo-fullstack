@@ -11,6 +11,11 @@ export const env = {
     .filter(Boolean),
   adminPassword: process.env.ADMIN_PASSWORD || 'lekoyo2026',
   authSecret: process.env.AUTH_SECRET || 'meuble-lekoyo-jambi-secret-key-2026',
+  googleClientId: (process.env.GOOGLE_CLIENT_ID || '').trim(),
+  ownerEmails: (process.env.OWNER_EMAILS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
   databaseUrl: (process.env.DATABASE_URL || '').trim(),
   genaiApiUrl: (process.env.GENAI_API_URL || '').trim().replace(/\/$/, ''),
   genaiApiKey: (process.env.GENAI_API_KEY || '').trim(),

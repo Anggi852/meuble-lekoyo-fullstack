@@ -18,7 +18,7 @@ import Analytics from './pages/admin/Analytics'
 import Sales from './pages/admin/Sales'
 import ScrollToTop from './components/ScrollToTop'
 import { AppProvider } from './context/AppContext'
-
+import MyOrders from './pages/MyOrders';
 function App() {
   return (
     <AppProvider>
@@ -28,6 +28,7 @@ function App() {
         <Route element={<CustomerLayout />}>
           <Route path="/" element={<Home />} />
           <Route path="/catalog" element={<Catalog />} />
+          <Route path="/my-orders" element={<MyOrders />} />
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/custom" element={<Custom />} />
           <Route path="/wishlist" element={<Wishlist />} />

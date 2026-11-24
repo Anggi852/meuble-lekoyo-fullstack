@@ -1,7 +1,14 @@
 import { Router } from 'express';
 import { env, STORE } from '../config/env.js';
 import { db } from '../db/index.js';
-import { requireAdmin, signAdminToken } from '../middleware/auth.js';
+import {
+  requireAdmin,
+  requireAuth,
+  optionalAuth,
+  signAdminToken,
+  signToken,
+  verifyGoogleCredential,
+} from '../middleware/auth.js';
 import { orderRateLimiter, loginRateLimiter } from '../middleware/rateLimit.js';
 import {
   validate,
@@ -60,7 +67,7 @@ router.get(
   }),
 );
 
-/* -------------------- AUTH (OWNER) -------------------- */
+/* -------------------- AUTH (OWNER & CUSTOMER GOOGLE) -------------------- */
 router.post(
   '/auth/login',
   loginRateLimiter,
@@ -82,8 +89,38 @@ router.post(
   }),
 );
 
-router.get('/auth/me', requireAdmin, (req, res) => {
-  res.json({ success: true, data: req.admin });
+router.post(
+  '/auth/google',
+  loginRateLimiter,
+  asyncHandler(async (req, res) => {
+    const { credential } = req.body || {};
+    if (!credential || typeof credential !== 'string') {
+      return res.status(400).json({
+        success: false,
+        code: 'MISSING_CREDENTIAL',
+        message: 'Token login Google tidak ditemukan.',
+      });
+    }
+    try {
+      const user = await verifyGoogleCredential(credential);
+      const token = signToken(user);
+      return res.json({
+        success: true,
+        message: user.role === 'owner' ? 'Login Owner via Google berhasil.' : 'Login Google berhasil.',
+        data: { token, user },
+      });
+    } catch (err) {
+      return res.status(401).json({
+        success: false,
+        code: 'GOOGLE_AUTH_FAILED',
+        message: err.message || 'Verifikasi akun Google gagal.',
+      });
+    }
+  }),
+);
+
+router.get('/auth/me', requireAuth, (req, res) => {
+  res.json({ success: true, data: req.user });
 });
 
 /* -------------------- PRODUCTS -------------------- */
@@ -209,17 +246,29 @@ router.get(
   }),
 );
 
+router.get(
+  '/orders/me',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const list = await db.getOrdersByEmail(req.user.email);
+    res.json({ success: true, data: list });
+  }),
+);
+
 router.post(
   '/orders',
+  optionalAuth,
   orderRateLimiter,
   validate(orderCreateSchema),
   asyncHandler(async (req, res) => {
     const cleanPhone = String(req.body.phone || '').replace(/[\s-]+/g, '');
     const estimatedPrice = Number(req.body.estimatedPrice ?? req.body.total) || 0;
+    const customerEmail = req.user?.email || req.body.customerEmail || '';
     const created = await db.createOrder({
       ...req.body,
       phone: cleanPhone,
       estimatedPrice,
+      customerEmail,
     });
     res.status(201).json({
       success: true,
