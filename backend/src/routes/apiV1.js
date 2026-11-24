@@ -215,10 +215,15 @@ router.post(
   validate(orderCreateSchema),
   asyncHandler(async (req, res) => {
     const cleanPhone = String(req.body.phone || '').replace(/[\s-]+/g, '');
-    const created = await db.createOrder({ ...req.body, phone: cleanPhone });
+    const estimatedPrice = Number(req.body.estimatedPrice ?? req.body.total) || 0;
+    const created = await db.createOrder({
+      ...req.body,
+      phone: cleanPhone,
+      estimatedPrice,
+    });
     res.status(201).json({
       success: true,
-      message: 'Pengajuan pesanan tercatat (Menunggu Konfirmasi WA).',
+      message: `Pengajuan pesanan (${created.orderCode}) tercatat. Menunggu penetapan harga dari owner.`,
       data: created,
     });
   }),
@@ -229,7 +234,12 @@ router.patch(
   requireAdmin,
   validate(orderUpdateSchema),
   asyncHandler(async (req, res) => {
-    const updated = await db.updateOrder(req.params.id, req.body);
+    const patch = { ...req.body };
+    // Jika owner mengisi harga final tanpa memilih status manual, otomatis ubah ke 'Harga Ditetapkan'
+    if (patch.finalPrice !== undefined && patch.finalPrice !== null && !patch.status) {
+      patch.status = 'Harga Ditetapkan';
+    }
+    const updated = await db.updateOrder(req.params.id, patch);
     if (!updated) return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
     return res.json({ success: true, message: 'Pesanan diperbarui.', data: updated });
   }),

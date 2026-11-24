@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { env } from '../config/env.js';
+import { generateOrderCode } from '../utils/orderCode.js';
 import {
   seedProducts,
   seedCustomPortfolio,
@@ -162,15 +163,28 @@ function createJsonDriver() {
     },
 
     async getOrders() { return state.orders; },
+    async getOrdersByEmail(email) {
+      const target = String(email || '').trim().toLowerCase();
+      return state.orders.filter((o) => String(o.customerEmail || '').toLowerCase() === target);
+    },
     async createOrder(data) {
+      const estimated = Number(data.estimatedPrice ?? data.total) || 0;
       const item = {
         id: Date.now(),
+        orderCode: data.orderCode || generateOrderCode(),
+        customerEmail: data.customerEmail || '',
         phone: '',
-        status: 'Menunggu Konfirmasi WA',
+        estimatedPrice: estimated,
+        finalPrice: data.finalPrice != null ? Number(data.finalPrice) : null,
+        ownerNote: data.ownerNote || '',
+        latitude: data.latitude ?? null,
+        longitude: data.longitude ?? null,
+        status: data.status || 'Menunggu Harga Owner',
         madeBefore: false,
         madeNote: '',
         createdAt: new Date().toISOString(),
         ...data,
+        total: data.finalPrice != null ? Number(data.finalPrice) : estimated,
       };
       state.orders = [item, ...state.orders];
       persist();
@@ -180,7 +194,11 @@ function createJsonDriver() {
       const numId = Number(id);
       const idx = state.orders.findIndex((o) => o.id === numId);
       if (idx === -1) return null;
-      state.orders[idx] = { ...state.orders[idx], ...patch, id: numId };
+      const next = { ...state.orders[idx], ...patch, id: numId };
+      if (patch.finalPrice !== undefined && patch.finalPrice !== null) {
+        next.total = Number(patch.finalPrice);
+      }
+      state.orders[idx] = next;
       persist();
       return state.orders[idx];
     },
@@ -348,6 +366,8 @@ function createPostgresDriver(connectionString) {
 
   const mapOrder = (r) => ({
     id: Number(r.id),
+    orderCode: r.order_code || '',
+    customerEmail: r.customer_email || '',
     name: r.name,
     phone: r.phone || '',
     address: r.address,
@@ -356,6 +376,11 @@ function createPostgresDriver(connectionString) {
     quantity: Number(r.quantity),
     payment: r.payment,
     total: Number(r.total),
+    estimatedPrice: Number(r.estimated_price ?? r.total ?? 0),
+    finalPrice: r.final_price === null || r.final_price === undefined ? null : Number(r.final_price),
+    ownerNote: r.owner_note || '',
+    latitude: r.latitude === null || r.latitude === undefined ? null : Number(r.latitude),
+    longitude: r.longitude === null || r.longitude === undefined ? null : Number(r.longitude),
     status: r.status,
     custom: r.custom || undefined,
     madeBefore: Boolean(r.made_before),
@@ -500,12 +525,45 @@ function createPostgresDriver(connectionString) {
       const { rows } = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
       return rows.map(mapOrder);
     },
+    async getOrdersByEmail(email) {
+      const { rows } = await pool.query(
+        'SELECT * FROM orders WHERE LOWER(customer_email) = LOWER($1) ORDER BY created_at DESC',
+        [String(email || '').trim()],
+      );
+      return rows.map(mapOrder);
+    },
     async createOrder(data) {
       const id = Date.now();
+      const orderCode = data.orderCode || generateOrderCode();
+      const estimated = Number(data.estimatedPrice ?? data.total) || 0;
       const { rows } = await pool.query(
-        `INSERT INTO orders (id, name, phone, address, product, product_id, quantity, payment, total, status, custom)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'Menunggu Konfirmasi WA',$10) RETURNING *`,
-        [id, data.name, data.phone || '', data.address, data.product, data.productId ?? null, Number(data.quantity) || 1, data.payment, Number(data.total) || 0, data.custom ? JSON.stringify(data.custom) : null],
+        `INSERT INTO orders (
+           id, order_code, customer_email, name, phone, address, product, product_id,
+           quantity, payment, total, estimated_price, final_price, owner_note,
+           latitude, longitude, status, custom
+         )
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+         RETURNING *`,
+        [
+          id,
+          orderCode,
+          data.customerEmail || null,
+          data.name,
+          data.phone || '',
+          data.address,
+          data.product,
+          data.productId ?? null,
+          Number(data.quantity) || 1,
+          data.payment,
+          estimated,
+          estimated,
+          null,
+          '',
+          data.latitude ?? null,
+          data.longitude ?? null,
+          'Menunggu Harga Owner',
+          data.custom ? JSON.stringify(data.custom) : null,
+        ],
       );
       return mapOrder(rows[0]);
     },
@@ -514,9 +572,23 @@ function createPostgresDriver(connectionString) {
       if (!cur[0]) return null;
       const o = mapOrder(cur[0]);
       const next = { ...o, ...patch };
+      const nextTotal =
+        patch.finalPrice !== undefined && patch.finalPrice !== null
+          ? Number(patch.finalPrice)
+          : next.total;
       const { rows } = await pool.query(
-        `UPDATE orders SET status=$2, made_before=$3, made_note=$4 WHERE id=$1 RETURNING *`,
-        [Number(id), next.status, Boolean(next.madeBefore), next.madeNote || ''],
+        `UPDATE orders
+         SET status=$2, made_before=$3, made_note=$4, final_price=$5, owner_note=$6, total=$7
+         WHERE id=$1 RETURNING *`,
+        [
+          Number(id),
+          next.status,
+          Boolean(next.madeBefore),
+          next.madeNote || '',
+          next.finalPrice ?? null,
+          next.ownerNote || '',
+          nextTotal,
+        ],
       );
       return mapOrder(rows[0]);
     },

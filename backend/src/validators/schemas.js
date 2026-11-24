@@ -68,6 +68,10 @@ export const orderCreateSchema = Joi.object({
   quantity: Joi.number().integer().min(1).max(50).required(),
   payment: Joi.string().valid('Tunai', 'Tabung', 'Tunai / M-Banking', 'Sistem Tabung').required(),
   total: Joi.number().min(0).default(0),
+  estimatedPrice: Joi.number().min(0).optional(),
+  customerEmail: Joi.string().trim().email().allow('', null).optional(),
+  latitude: Joi.number().min(-90).max(90).allow(null).optional(),
+  longitude: Joi.number().min(-180).max(180).allow(null).optional(),
   agreedToTerms: Joi.boolean().valid(true).default(true).messages({
     'any.only': 'Anda harus menyetujui ketentuan konfirmasi WhatsApp sebelum mengirim pesanan.',
   }),
@@ -75,7 +79,19 @@ export const orderCreateSchema = Joi.object({
 });
 
 export const orderUpdateSchema = Joi.object({
-  status: Joi.string().valid('Menunggu Konfirmasi WA', 'Baru', 'Diproses', 'Selesai', 'Dibatalkan').optional(),
+  status: Joi.string()
+    .valid(
+      'Menunggu Harga Owner',
+      'Harga Ditetapkan',
+      'Menunggu Konfirmasi WA',
+      'Baru',
+      'Diproses',
+      'Selesai',
+      'Dibatalkan',
+    )
+    .optional(),
+  finalPrice: Joi.number().min(0).allow(null).optional(),
+  ownerNote: Joi.string().trim().allow('', null).max(500).optional(),
   madeBefore: Joi.boolean().optional(),
   madeNote: Joi.string().trim().allow('').max(500).optional(),
 }).min(1);
