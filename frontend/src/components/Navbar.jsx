@@ -1,5 +1,16 @@
 import { Link, NavLink } from 'react-router-dom';
-import { Menu, X, MessageCircle, Heart, Sparkles, User, LogOut, ClipboardList, ShieldCheck } from 'lucide-react';
+import {
+  Menu,
+  X,
+  MessageCircle,
+  Heart,
+  Sparkles,
+  User,
+  LogOut,
+  ClipboardList,
+  Crown,
+  ArrowRight,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { GoogleLogin } from '@react-oauth/google';
@@ -70,7 +81,7 @@ export default function Navbar() {
       setOpen(false);
       toast.success(
         res?.user?.role === 'owner'
-          ? `Selamat datang, Owner (${res.user.name})!`
+          ? `Mode Owner aktif — Selamat datang, ${res.user.name}!`
           : `Berhasil masuk sebagai ${res?.user?.name || 'Pelanggan'}.`,
       );
     } catch (err) {
@@ -104,6 +115,29 @@ export default function Navbar() {
           : 'border-line/70 bg-cream/85 backdrop-blur-md'
       }`}
     >
+      {/* Bilah Eksklusif Owner — HANYA tampil saat akun Owner yang login */}
+      {isOwner && (
+        <div className="border-b border-gold/30 bg-espresso text-gold-light">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-1.5 text-xs sm:px-6">
+            <span className="inline-flex items-center gap-1.5 font-semibold tracking-wide">
+              <Crown size={13} className="text-gold" />
+              <span>
+                Mode Owner Aktif{' '}
+                <span className="hidden text-cream/75 sm:inline">
+                  · {user?.name || 'Pengelola Meuble Le\'Koyo'}
+                </span>
+              </span>
+            </span>
+            <Link
+              to="/admin"
+              className="inline-flex items-center gap-1 rounded-full bg-gold px-3 py-0.5 text-[11px] font-bold text-espresso transition hover:bg-gold-light"
+            >
+              Dashboard Owner <ArrowRight size={12} />
+            </Link>
+          </div>
+        </div>
+      )}
+
       <nav className="mx-auto max-w-6xl px-4 sm:px-6" aria-label="Navigasi utama">
         <div className="flex h-16 sm:h-[4.5rem] items-center justify-between">
           <Link to="/" className="group flex items-center gap-3" onClick={() => setOpen(false)}>
@@ -201,22 +235,33 @@ export default function Navbar() {
               <button
                 type="button"
                 onClick={() => setAccountOpen((v) => !v)}
-                className="flex items-center gap-2 rounded-xl border border-gold/35 bg-sand/80 px-3 py-2 text-sm font-semibold text-espresso transition hover:bg-sand"
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                  isOwner
+                    ? 'border-gold bg-espresso text-gold-light hover:bg-espresso/90'
+                    : 'border-gold/35 bg-sand/80 text-espresso hover:bg-sand'
+                }`}
                 aria-expanded={accountOpen}
               >
                 {user?.picture ? (
                   <img
                     src={user.picture}
                     alt={user.name}
-                    className="h-6 w-6 rounded-full object-cover"
+                    className="h-6 w-6 rounded-full object-cover ring-1 ring-gold/50"
                     referrerPolicy="no-referrer"
                   />
+                ) : isOwner ? (
+                  <Crown size={15} className="text-gold" />
                 ) : (
                   <User size={16} className="text-teak" />
                 )}
                 <span className="max-w-[90px] truncate">
                   {user ? user.name?.split(' ')[0] || 'Akun' : 'Masuk'}
                 </span>
+                {isOwner && (
+                  <span className="rounded-md bg-gold/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-gold-light">
+                    Owner
+                  </span>
+                )}
               </button>
 
               {accountOpen && (
@@ -242,30 +287,46 @@ export default function Navbar() {
                             {user.email && <p className="truncate text-xs text-muted">{user.email}</p>}
                           </div>
                         </div>
-                        {isOwner && (
-                          <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-gold/25 px-2.5 py-0.5 text-[11px] font-bold text-espresso">
-                            <ShieldCheck size={12} /> Akun Owner
+
+                        {isOwner ? (
+                          <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-espresso px-2.5 py-0.5 text-[11px] font-bold text-gold-light">
+                            <Crown size={12} className="text-gold" /> Akses Eksklusif Owner
+                          </span>
+                        ) : (
+                          <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-sand px-2.5 py-0.5 text-[11px] font-semibold text-teak">
+                            Akun Pelanggan
                           </span>
                         )}
                       </div>
+
+                      {isOwner && (
+                        <Link
+                          to="/admin"
+                          onClick={() => setAccountOpen(false)}
+                          className="flex items-center justify-between rounded-xl bg-espresso px-3 py-2.5 text-sm font-semibold text-gold-light transition hover:bg-espresso/90"
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <Crown size={15} className="text-gold" /> Dashboard Owner
+                          </span>
+                          <ArrowRight size={14} />
+                        </Link>
+                      )}
 
                       <Link
                         to="/my-orders"
                         onClick={() => setAccountOpen(false)}
                         className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-espresso transition hover:bg-sand"
                       >
-                        <ClipboardList size={16} className="text-teak" /> Pesanan Saya
+                        <ClipboardList size={16} className="text-teak" /> Pesanan &amp; Aktivitas Saya
                       </Link>
 
-                      {isOwner && (
-                        <Link
-                          to="/admin"
-                          onClick={() => setAccountOpen(false)}
-                          className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-espresso transition hover:bg-sand"
-                        >
-                          <ShieldCheck size={16} className="text-gold-dark" /> Portal Owner
-                        </Link>
-                      )}
+                      <Link
+                        to="/wishlist"
+                        onClick={() => setAccountOpen(false)}
+                        className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-espresso transition hover:bg-sand"
+                      >
+                        <Heart size={16} className="text-teak" /> Favorit Saya ({wishlist.length})
+                      </Link>
 
                       <button
                         type="button"
@@ -278,7 +339,7 @@ export default function Navbar() {
                   ) : (
                     <div className="space-y-3 text-center">
                       <p className="text-xs leading-relaxed text-muted">
-                        Masuk dengan akun Google untuk memantau status pesanan &amp; penetapan harga dari owner.
+                        Masuk dengan akun Google untuk menyinkronkan Favorit, memantau pesanan, dan melihat harga final dari Pak Nanang.
                       </p>
                       <div className="flex justify-center">
                         <GoogleLogin
@@ -331,6 +392,19 @@ export default function Navbar() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-1 border-t border-line pb-4 pt-3 md:hidden"
           >
+            {isOwner && (
+              <Link
+                to="/admin"
+                onClick={() => setOpen(false)}
+                className="mb-2 flex items-center justify-between rounded-xl bg-espresso px-4 py-3 text-sm font-bold text-gold-light"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Crown size={16} className="text-gold" /> Masuk Dashboard Owner
+                </span>
+                <ArrowRight size={15} />
+              </Link>
+            )}
+
             {navItems.map((item) => (
               <NavLink
                 key={item.name}
@@ -357,17 +431,7 @@ export default function Navbar() {
                   }`
                 }
               >
-                Pesanan Saya {myOrders.length > 0 ? `(${myOrders.length})` : ''}
-              </NavLink>
-            )}
-
-            {isOwner && (
-              <NavLink
-                to="/admin"
-                onClick={() => setOpen(false)}
-                className="block rounded-xl px-4 py-3 text-base font-medium text-bark"
-              >
-                Portal Owner
+                Pesanan &amp; Aktivitas Saya {myOrders.length > 0 ? `(${myOrders.length})` : ''}
               </NavLink>
             )}
 
@@ -390,7 +454,7 @@ export default function Navbar() {
               ) : (
                 <div className="flex flex-col items-center gap-2">
                   <p className="text-center text-xs text-muted">
-                    Masuk dengan Google untuk pantau pesanan &amp; harga owner
+                    Masuk dengan Google untuk sinkron Favorit &amp; pantau pesanan
                   </p>
                   <GoogleLogin
                     onSuccess={handleGoogleSuccess}

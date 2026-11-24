@@ -1,24 +1,33 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
-import CustomerLayout from './components/CustomerLayout'
-import AdminLayout from './components/admin/AdminLayout'
-import Home from './pages/Home'
-import Catalog from './pages/Catalog'
-import ProductDetail from './pages/ProductDetail'
-import Wishlist from './pages/Wishlist'
-import Custom from './pages/Custom'
-import AdminLogin from './pages/AdminLogin'
-import Overview from './pages/admin/Overview'
-import Orders from './pages/admin/Orders'
-import Products from './pages/admin/Products'
-import CustomGallery from './pages/admin/CustomGallery'
-import Faqs from './pages/admin/Faqs'
-import Testimonials from './pages/admin/Testimonials'
-import Chats from './pages/admin/Chats'
-import Analytics from './pages/admin/Analytics'
-import Sales from './pages/admin/Sales'
-import ScrollToTop from './components/ScrollToTop'
-import { AppProvider } from './context/AppContext'
+import { Routes, Route, Navigate } from 'react-router-dom';
+import CustomerLayout from './components/CustomerLayout';
+import AdminLayout from './components/admin/AdminLayout';
+import Home from './pages/Home';
+import Catalog from './pages/Catalog';
+import ProductDetail from './pages/ProductDetail';
+import Wishlist from './pages/Wishlist';
+import Custom from './pages/Custom';
+import AdminLogin from './pages/AdminLogin';
+import Overview from './pages/admin/Overview';
+import Orders from './pages/admin/Orders';
+import Products from './pages/admin/Products';
+import CustomGallery from './pages/admin/CustomGallery';
+import Faqs from './pages/admin/Faqs';
+import Testimonials from './pages/admin/Testimonials';
+import Chats from './pages/admin/Chats';
+import Analytics from './pages/admin/Analytics';
+import Sales from './pages/admin/Sales';
+import ScrollToTop from './components/ScrollToTop';
+import { AppProvider, useApp } from './context/AppContext';
 import MyOrders from './pages/MyOrders';
+
+// Pelindung ketat: pelanggan yang sudah login tidak akan pernah masuk ke area /admin
+function RequireOwner({ children }) {
+  const { user, isOwner } = useApp();
+  if (isOwner) return children;
+  if (user) return <Navigate to="/" replace />;
+  return <Navigate to="/admin/login" replace />;
+}
+
 function App() {
   return (
     <AppProvider>
@@ -34,10 +43,19 @@ function App() {
           <Route path="/wishlist" element={<Wishlist />} />
         </Route>
 
-        {/* Sisi owner (terpisah dari tampilan pelanggan) */}
+        {/* Rute /login diarahkan ke akun pelanggan, bukan portal owner */}
+        <Route path="/login" element={<Navigate to="/my-orders" replace />} />
+
+        {/* Gerbang & Dashboard khusus Owner */}
         <Route path="/admin/login" element={<AdminLogin />} />
-        <Route path="/login" element={<Navigate to="/admin/login" replace />} />
-        <Route path="/admin" element={<AdminLayout />}>
+        <Route
+          path="/admin"
+          element={
+            <RequireOwner>
+              <AdminLayout />
+            </RequireOwner>
+          }
+        >
           <Route index element={<Overview />} />
           <Route path="orders" element={<Orders />} />
           <Route path="products" element={<Products />} />
@@ -52,7 +70,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppProvider>
-  )
+  );
 }
 
-export default App
+export default App;
