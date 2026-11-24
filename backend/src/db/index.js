@@ -16,6 +16,30 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = path.resolve(__dirname, '../../data/database.json');
 const SCHEMA_FILE = path.resolve(__dirname, '../../sql/schema.sql');
 
+const USER_TRACKING_SQL = `
+CREATE TABLE IF NOT EXISTS user_wishlists (
+  user_email TEXT NOT NULL,
+  product_id BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_email, product_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_wishlists_email ON user_wishlists (user_email);
+
+CREATE TABLE IF NOT EXISTS user_activities (
+  id BIGSERIAL PRIMARY KEY,
+  user_email TEXT NOT NULL,
+  user_name TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL,
+  target_type TEXT NOT NULL DEFAULT '',
+  target_id TEXT NOT NULL DEFAULT '',
+  label TEXT NOT NULL DEFAULT '',
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_user_activities_email_time ON user_activities (user_email, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_activities_action ON user_activities (action);
+`;
+
 function normalizeImages(item) {
   const raw = Array.isArray(item.images) && item.images.length > 0
     ? item.images
@@ -48,6 +72,8 @@ function initialSnapshot() {
     faqs: [...seedFaqs],
     testimonials: [...seedTestimonials],
     chatLogs: [],
+    wishlists: {},
+    activities: [],
     metrics: {
       visits: 0,
       views: {},
@@ -80,6 +106,8 @@ function createJsonDriver() {
         faqs: Array.isArray(parsed.faqs) ? parsed.faqs : base.faqs,
         testimonials: Array.isArray(parsed.testimonials) ? parsed.testimonials : base.testimonials,
         chatLogs: Array.isArray(parsed.chatLogs) ? parsed.chatLogs : [],
+        wishlists: parsed.wishlists && typeof parsed.wishlists === 'object' ? parsed.wishlists : {},
+        activities: Array.isArray(parsed.activities) ? parsed.activities : [],
         metrics: {
           visits: Number(parsed.metrics?.visits) || 0,
           views: parsed.metrics?.views && typeof parsed.metrics.views === 'object' ? parsed.metrics.views : {},
@@ -303,6 +331,62 @@ function createJsonDriver() {
       persist();
     },
 
+    /* ---- WISHLIST PER AKUN ---- */
+    async getWishlistByEmail(email) {
+      const key = String(email || '').trim().toLowerCase();
+      if (!key) return [];
+      const list = state.wishlists[key];
+      return Array.isArray(list) ? list.map(Number) : [];
+    },
+    async toggleWishlist(email, productId) {
+      const key = String(email || '').trim().toLowerCase();
+      const numId = Number(productId);
+      const current = Array.isArray(state.wishlists[key]) ? state.wishlists[key].map(Number) : [];
+      const exists = current.includes(numId);
+      const next = exists ? current.filter((id) => id !== numId) : [numId, ...current];
+      state.wishlists[key] = next;
+      persist();
+      return { active: !exists, productId: numId, wishlist: next };
+    },
+
+    /* ---- AKTIVITAS AKUN (SIAP UNTUK AI / DATA SCIENCE) ---- */
+    async createActivity(entry) {
+      const email = String(entry.userEmail || '').trim().toLowerCase();
+      if (!email) return null;
+      const item = {
+        id: Date.now() * 1000 + Math.floor(Math.random() * 1000),
+        userEmail: email,
+        userName: entry.userName || '',
+        action: entry.action || 'activity',
+        targetType: entry.targetType || '',
+        targetId: entry.targetId != null ? String(entry.targetId) : '',
+        label: entry.label || '',
+        metadata: entry.metadata && typeof entry.metadata === 'object' ? entry.metadata : {},
+        createdAt: new Date().toISOString(),
+      };
+      state.activities = [item, ...state.activities].slice(0, 1000);
+      persist();
+      return item;
+    },
+    async getActivitiesByEmail(email, limit = 50) {
+      const key = String(email || '').trim().toLowerCase();
+      const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+      return state.activities.filter((a) => a.userEmail === key).slice(0, safeLimit);
+    },
+    async getAllActivities({ email, action, limit = 100 } = {}) {
+      const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+      let list = state.activities;
+      if (email) {
+        const key = String(email).trim().toLowerCase();
+        list = list.filter((a) => a.userEmail === key);
+      }
+      if (action) {
+        const act = String(action).trim();
+        list = list.filter((a) => a.action === act);
+      }
+      return list.slice(0, safeLimit);
+    },
+
     async getMetrics() { return state.metrics; },
     async incrementVisits() {
       state.metrics.visits += 1;
@@ -407,6 +491,18 @@ function createPostgresDriver(connectionString) {
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
   });
 
+  const mapActivity = (r) => ({
+    id: Number(r.id),
+    userEmail: r.user_email,
+    userName: r.user_name || '',
+    action: r.action,
+    targetType: r.target_type || '',
+    targetId: r.target_id || '',
+    label: r.label || '',
+    metadata: r.metadata || {},
+    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+  });
+
   async function seedIfEmpty() {
     const { rows } = await pool.query('SELECT COUNT(*)::int AS cnt FROM products');
     if (rows[0].cnt > 0) return;
@@ -448,6 +544,7 @@ function createPostgresDriver(connectionString) {
     async init() {
       const sql = fs.readFileSync(SCHEMA_FILE, 'utf-8');
       await pool.query(sql);
+      await pool.query(USER_TRACKING_SQL);
       await seedIfEmpty();
     },
 
@@ -683,6 +780,90 @@ function createPostgresDriver(connectionString) {
       await pool.query('DELETE FROM chat_logs');
     },
 
+    /* ---- WISHLIST PER AKUN ---- */
+    async getWishlistByEmail(email) {
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      if (!cleanEmail) return [];
+      const { rows } = await pool.query(
+        'SELECT product_id FROM user_wishlists WHERE LOWER(user_email) = $1 ORDER BY created_at DESC',
+        [cleanEmail],
+      );
+      return rows.map((r) => Number(r.product_id));
+    },
+    async toggleWishlist(email, productId) {
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      const numId = Number(productId);
+      const del = await pool.query(
+        'DELETE FROM user_wishlists WHERE LOWER(user_email) = $1 AND product_id = $2',
+        [cleanEmail, numId],
+      );
+      let active = false;
+      if (del.rowCount === 0) {
+        await pool.query(
+          `INSERT INTO user_wishlists (user_email, product_id)
+           VALUES ($1, $2)
+           ON CONFLICT (user_email, product_id) DO NOTHING`,
+          [cleanEmail, numId],
+        );
+        active = true;
+      }
+      const wishlist = await this.getWishlistByEmail(cleanEmail);
+      return { active, productId: numId, wishlist };
+    },
+
+    /* ---- AKTIVITAS AKUN (SIAP UNTUK AI / DATA SCIENCE) ---- */
+    async createActivity(entry) {
+      const cleanEmail = String(entry.userEmail || '').trim().toLowerCase();
+      if (!cleanEmail) return null;
+      const { rows } = await pool.query(
+        `INSERT INTO user_activities (user_email, user_name, action, target_type, target_id, label, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+         RETURNING *`,
+        [
+          cleanEmail,
+          entry.userName || '',
+          entry.action || 'activity',
+          entry.targetType || '',
+          entry.targetId != null ? String(entry.targetId) : '',
+          entry.label || '',
+          JSON.stringify(entry.metadata && typeof entry.metadata === 'object' ? entry.metadata : {}),
+        ],
+      );
+      return mapActivity(rows[0]);
+    },
+    async getActivitiesByEmail(email, limit = 50) {
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+      const { rows } = await pool.query(
+        `SELECT * FROM user_activities
+         WHERE LOWER(user_email) = $1
+         ORDER BY created_at DESC
+         LIMIT $2`,
+        [cleanEmail, safeLimit],
+      );
+      return rows.map(mapActivity);
+    },
+    async getAllActivities({ email, action, limit = 100 } = {}) {
+      const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+      const conditions = [];
+      const params = [];
+      if (email) {
+        params.push(String(email).trim().toLowerCase());
+        conditions.push(`LOWER(user_email) = $${params.length}`);
+      }
+      if (action) {
+        params.push(String(action).trim());
+        conditions.push(`action = $${params.length}`);
+      }
+      params.push(safeLimit);
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+      const { rows } = await pool.query(
+        `SELECT * FROM user_activities ${where} ORDER BY created_at DESC LIMIT $${params.length}`,
+        params,
+      );
+      return rows.map(mapActivity);
+    },
+
     async getMetrics() {
       const { rows } = await pool.query(`SELECT value FROM metrics WHERE key='stats'`);
       return rows[0]?.value || { visits: 0, views: {} };
@@ -712,7 +893,9 @@ function createPostgresDriver(connectionString) {
     },
 
     async resetAll() {
-      await pool.query('TRUNCATE products, custom_portfolio, orders, sales, faqs, testimonials, chat_logs, metrics');
+      await pool.query(
+        'TRUNCATE products, custom_portfolio, orders, sales, faqs, testimonials, chat_logs, metrics, user_wishlists, user_activities RESTART IDENTITY',
+      );
       await seedIfEmpty();
       return initialSnapshot();
     },

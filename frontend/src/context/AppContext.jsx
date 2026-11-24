@@ -18,11 +18,22 @@ const AppContext = createContext();
 function readWishlistStorage() {
   try {
     const raw = localStorage.getItem('lekoyo_wishlist');
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => (typeof item === 'object' ? Number(item?.id) : Number(item)))
+      .filter((id) => Number.isFinite(id) && id > 0)
+      .map((id) => ({ id }));
   } catch {
     return [];
   }
 }
+
+const toWishlistObjects = (ids) =>
+  (Array.isArray(ids) ? ids : [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0)
+    .map((id) => ({ id }));
 
 const upsert = (list, item) =>
   item.id && list.some((x) => x.id === item.id)
@@ -46,11 +57,16 @@ export function AppProvider({ children }) {
   const [chatLogs, setChatLogs] = useState([]);
   const [orders, setOrders] = useState([]);
   const [myOrders, setMyOrders] = useState([]);
+  const [myActivities, setMyActivities] = useState([]);
   const [sales, setSales] = useState([]);
   const [views, setViews] = useState({});
   const [visits, setVisits] = useState(0);
   const [analyticsSummary, setAnalyticsSummary] = useState(null);
-  const [savedWishlist, setSavedWishlist] = useState(readWishlistStorage);
+
+  // Jika sudah login akun Google, tunggu sinkronisasi dari database agar tidak tercampur localStorage
+  const [savedWishlist, setSavedWishlist] = useState(() =>
+    getStoredUser()?.email ? [] : readWishlistStorage(),
+  );
 
   // State global untuk membuka & mengirim prompt kontekstual ke Asisten Percakapan Koyo
   const [koyoOpen, setKoyoOpen] = useState(false);
@@ -111,7 +127,7 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  // Muat riwayat pesanan milik Customer yang sedang login Google
+  // Muat riwayat pesanan milik akun yang sedang login Google
   const loadMyOrders = useCallback(async () => {
     if (!getStoredToken()) {
       setMyOrders([]);
@@ -125,6 +141,52 @@ export function AppProvider({ children }) {
       return [];
     }
   }, []);
+
+  // Muat Favorit milik akun dari Neon PostgreSQL
+  const loadMyWishlist = useCallback(async () => {
+    if (!getStoredToken()) {
+      setSavedWishlist(readWishlistStorage());
+      return [];
+    }
+    try {
+      const ids = await api.getMyWishlist();
+      setSavedWishlist(toWishlistObjects(ids));
+      return ids || [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // Muat riwayat aktivitas akun
+  const loadMyActivities = useCallback(async (limit = 50) => {
+    if (!getStoredToken()) {
+      setMyActivities([]);
+      return [];
+    }
+    try {
+      const list = await api.getMyActivities(limit);
+      setMyActivities(list || []);
+      return list || [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const recordActivity = useCallback(
+    async (payload) => {
+      if (!getStoredToken() || !user?.email) return null;
+      try {
+        const created = await api.recordActivity(payload);
+        if (created) {
+          setMyActivities((prev) => [created, ...prev].slice(0, 100));
+        }
+        return created;
+      } catch {
+        return null;
+      }
+    },
+    [user?.email],
+  );
 
   const refreshAnalytics = useCallback(async () => {
     if (!getStoredToken()) return null;
@@ -143,7 +205,7 @@ export function AppProvider({ children }) {
     loadPublicData();
   }, [loadPublicData]);
 
-  // Sinkronkan sesi token saat pertama kali buka aplikasi
+  // Sinkronkan sesi token, pesanan, favorit, dan aktivitas saat pertama kali buka aplikasi
   useEffect(() => {
     const token = getStoredToken();
     if (!token) return;
@@ -153,15 +215,37 @@ export function AppProvider({ children }) {
         setUserState(me);
         setStoredUser(me);
         setLoggedInState(me?.role === 'owner');
-        loadMyOrders();
+        if (me?.email) {
+          loadMyOrders();
+          loadMyWishlist();
+          loadMyActivities();
+        }
       })
       .catch(() => {
         setStoredToken('');
         setStoredUser(null);
         setUserState(null);
         setLoggedInState(false);
+        setSavedWishlist(readWishlistStorage());
       });
-  }, [loadMyOrders]);
+  }, [loadMyOrders, loadMyWishlist, loadMyActivities]);
+
+  // Sinkron otomatis antar tab/jendela browser saat kembali aktif
+  useEffect(() => {
+    if (!user?.email) return undefined;
+    const syncAccountState = () => {
+      if (document.visibilityState === 'visible') {
+        loadMyWishlist();
+        loadMyActivities();
+      }
+    };
+    window.addEventListener('focus', syncAccountState);
+    document.addEventListener('visibilitychange', syncAccountState);
+    return () => {
+      window.removeEventListener('focus', syncAccountState);
+      document.removeEventListener('visibilitychange', syncAccountState);
+    };
+  }, [user?.email, loadMyWishlist, loadMyActivities]);
 
   useEffect(() => {
     if (isLoggedIn) loadAdminData();
@@ -185,7 +269,7 @@ export function AppProvider({ children }) {
     setUserState(res.user);
     setLoggedInState(res.user?.role === 'owner');
     setBackendOnline(true);
-    loadMyOrders();
+    await Promise.all([loadMyOrders(), loadMyWishlist(), loadMyActivities()]);
     return res;
   };
 
@@ -195,6 +279,8 @@ export function AppProvider({ children }) {
     setUserState(null);
     setLoggedInState(false);
     setMyOrders([]);
+    setMyActivities([]);
+    setSavedWishlist([]);
   };
 
   const logoutAdmin = logoutUser;
@@ -236,16 +322,43 @@ export function AppProvider({ children }) {
     return { onlineUnits, customUnits, offlineUnits, units: onlineUnits + customUnits + offlineUnits, revenue };
   }, [orders, sales, products]);
 
-  // Favorit disimpan lokal per pengunjung di browser
+  // Favorit: sinkron ke database Neon saat login Google, fallback localStorage hanya untuk tamu
   const wishlist = useMemo(
     () => savedWishlist.map((w) => products.find((p) => p.id === w.id)).filter(Boolean),
     [savedWishlist, products],
   );
-  const toggleWishlist = (product) => {
+
+  const toggleWishlist = async (product) => {
+    const productId = Number(product?.id ?? product);
+    if (!Number.isFinite(productId) || productId <= 0) return;
+
+    // Jika sudah login akun Google -> simpan ke database agar sinkron lintas perangkat
+    if (user?.email && getStoredToken()) {
+      const previous = savedWishlist;
+      const exists = previous.some((i) => i.id === productId);
+      const optimistic = exists
+        ? previous.filter((i) => i.id !== productId)
+        : [{ id: productId }, ...previous];
+      setSavedWishlist(optimistic);
+
+      try {
+        const res = await api.toggleWishlist(productId);
+        if (Array.isArray(res?.wishlist)) {
+          setSavedWishlist(toWishlistObjects(res.wishlist));
+        }
+        loadMyActivities();
+      } catch (err) {
+        setSavedWishlist(previous);
+        toast.error(extractApiError(err, 'Gagal menyinkronkan Favorit ke akun.'));
+      }
+      return;
+    }
+
+    // Pengunjung tamu (belum login) -> simpan sementara di browser
     setSavedWishlist((prev) => {
-      const next = prev.some((i) => i.id === product.id)
-        ? prev.filter((i) => i.id !== product.id)
-        : [...prev, { id: product.id }];
+      const next = prev.some((i) => i.id === productId)
+        ? prev.filter((i) => i.id !== productId)
+        : [{ id: productId }, ...prev];
       try {
         localStorage.setItem('lekoyo_wishlist', JSON.stringify(next));
       } catch {
@@ -361,6 +474,7 @@ export function AppProvider({ children }) {
       setOrders((prev) => [created, ...prev]);
       if (user?.email) {
         setMyOrders((prev) => [created, ...prev]);
+        loadMyActivities();
       }
       return created;
     } catch (err) {
@@ -437,6 +551,7 @@ export function AppProvider({ children }) {
     if (res?.log) {
       setChatLogs((prev) => [res.log, ...prev].slice(0, 200));
     }
+    if (user?.email) loadMyActivities();
     setBackendOnline(true);
     return res;
   };
@@ -445,6 +560,7 @@ export function AppProvider({ children }) {
     try {
       const res = await api.sendChat({ message, logOnly: true, intent });
       if (res?.log) setChatLogs((prev) => [res.log, ...prev].slice(0, 200));
+      if (user?.email) loadMyActivities();
     } catch {
       /* abaikan bila offline */
     }
@@ -481,7 +597,7 @@ export function AppProvider({ children }) {
   const resetData = async () => {
     try {
       await api.resetAll();
-      await Promise.all([loadPublicData(), loadAdminData()]);
+      await Promise.all([loadPublicData(), loadAdminData(), loadMyWishlist(), loadMyActivities()]);
       toast.success('Semua data di database berhasil dikembalikan ke contoh awal.');
     } catch (err) {
       toast.error(extractApiError(err, 'Gagal mereset data.'));
@@ -518,6 +634,9 @@ export function AppProvider({ children }) {
     orders,
     myOrders,
     loadMyOrders,
+    myActivities,
+    loadMyActivities,
+    recordActivity,
     addOrder,
     updateOrderStatus,
     updateOrder,
@@ -535,6 +654,7 @@ export function AppProvider({ children }) {
     analyticsSummary,
     refreshAnalytics,
     wishlist,
+    loadMyWishlist,
     toggleWishlist,
     resetData,
     koyoOpen,

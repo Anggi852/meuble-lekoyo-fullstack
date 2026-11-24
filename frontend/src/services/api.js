@@ -101,6 +101,17 @@ export const api = {
   loginGoogle: (credential) => http.post('/auth/google', { credential }).then((r) => r.data.data),
   me: () => http.get('/auth/me').then((r) => r.data.data),
 
+  // Wishlist per Akun (Sinkron Database)
+  getMyWishlist: () => http.get('/wishlist/me').then((r) => r.data.data),
+  toggleWishlist: (productId) =>
+    http.post('/wishlist/toggle', { productId }).then((r) => r.data.data),
+
+  // Aktivitas Akun (Pelanggan, Owner & AI/Data Science)
+  getMyActivities: (limit = 50) =>
+    http.get('/activities/me', { params: { limit } }).then((r) => r.data.data),
+  recordActivity: (payload) => http.post('/activities', payload).then((r) => r.data.data),
+  getAllActivities: (params) => http.get('/activities', { params }).then((r) => r.data.data),
+
   // Products
   getProducts: (params) => http.get('/products', { params }).then((r) => r.data.data),
   createProduct: (payload) => http.post('/products', payload).then((r) => r.data.data),

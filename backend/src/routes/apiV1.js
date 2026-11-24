@@ -32,6 +32,17 @@ const router = Router();
 // Helper wrapper agar error async langsung diteruskan ke errorHandler
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+// Helper aman agar pencatatan aktivitas tidak pernah mengganggu alur utama user
+async function logActivitySafe(payload) {
+  if (!payload?.userEmail) return null;
+  try {
+    return await db.createActivity(payload);
+  } catch (err) {
+    console.warn('[activity-log] gagal mencatat aktivitas:', err?.message);
+    return null;
+  }
+}
+
 /* -------------------- HEALTH & BOOTSTRAP -------------------- */
 router.get('/health', (_req, res) => {
   res.json({
@@ -104,6 +115,14 @@ router.post(
     try {
       const user = await verifyGoogleCredential(credential);
       const token = signToken(user);
+      await logActivitySafe({
+        userEmail: user.email,
+        userName: user.name,
+        action: 'login',
+        targetType: 'auth',
+        label: user.role === 'owner' ? 'Masuk sebagai Owner via Google' : 'Masuk dengan akun Google',
+        metadata: { role: user.role },
+      });
       return res.json({
         success: true,
         message: user.role === 'owner' ? 'Login Owner via Google berhasil.' : 'Login Google berhasil.',
@@ -122,6 +141,99 @@ router.post(
 router.get('/auth/me', requireAuth, (req, res) => {
   res.json({ success: true, data: req.user });
 });
+
+/* -------------------- WISHLIST PER AKUN (SINKRON NEON) -------------------- */
+router.get(
+  '/wishlist/me',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const wishlist = await db.getWishlistByEmail(req.user.email);
+    res.json({ success: true, data: wishlist });
+  }),
+);
+
+router.post(
+  '/wishlist/toggle',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const productId = Number(req.body?.productId);
+    if (!Number.isInteger(productId) || productId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'productId tidak valid.',
+      });
+    }
+    const product = await db.getProductById(productId);
+    const result = await db.toggleWishlist(req.user.email, productId);
+
+    await logActivitySafe({
+      userEmail: req.user.email,
+      userName: req.user.name,
+      action: result.active ? 'wishlist_add' : 'wishlist_remove',
+      targetType: 'product',
+      targetId: String(productId),
+      label: result.active
+        ? `Menambahkan ${product?.name || `Produk #${productId}`} ke Favorit`
+        : `Menghapus ${product?.name || `Produk #${productId}`} dari Favorit`,
+      metadata: {
+        productId,
+        productName: product?.name || '',
+        category: product?.category || '',
+        price: product?.price || 0,
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: result.active ? 'Ditambahkan ke Favorit akun.' : 'Dihapus dari Favorit akun.',
+      data: result,
+    });
+  }),
+);
+
+/* -------------------- USER ACTIVITIES (PELANGGAN, OWNER & AI/DS) -------------------- */
+router.get(
+  '/activities/me',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const list = await db.getActivitiesByEmail(req.user.email, req.query.limit);
+    res.json({ success: true, data: list });
+  }),
+);
+
+router.post(
+  '/activities',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { action, targetType, targetId, label, metadata } = req.body || {};
+    if (!action || typeof action !== 'string') {
+      return res.status(400).json({ success: false, message: 'Field action wajib diisi.' });
+    }
+    const created = await db.createActivity({
+      userEmail: req.user.email,
+      userName: req.user.name,
+      action: action.trim().slice(0, 60),
+      targetType: String(targetType || '').trim().slice(0, 40),
+      targetId: targetId != null ? String(targetId).trim().slice(0, 80) : '',
+      label: String(label || '').trim().slice(0, 240),
+      metadata: metadata && typeof metadata === 'object' ? metadata : {},
+    });
+    return res.status(201).json({ success: true, data: created });
+  }),
+);
+
+router.get(
+  '/activities',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const list = await db.getAllActivities({
+      email: req.query.email,
+      action: req.query.action,
+      limit: req.query.limit,
+    });
+    res.json({ success: true, data: list });
+  }),
+);
 
 /* -------------------- PRODUCTS -------------------- */
 router.get(
@@ -270,6 +382,27 @@ router.post(
       estimatedPrice,
       customerEmail,
     });
+
+    await logActivitySafe({
+      userEmail: customerEmail,
+      userName: req.user?.name || created.name,
+      action: created.custom ? 'custom_order_create' : 'order_create',
+      targetType: 'order',
+      targetId: String(created.orderCode || created.id),
+      label: `Mengajukan pesanan ${created.product} (${created.orderCode})`,
+      metadata: {
+        orderId: created.id,
+        orderCode: created.orderCode,
+        product: created.product,
+        productId: created.productId,
+        quantity: created.quantity,
+        payment: created.payment,
+        estimatedPrice: created.estimatedPrice,
+        isCustom: Boolean(created.custom),
+        hasGps: created.latitude != null && created.longitude != null,
+      },
+    });
+
     res.status(201).json({
       success: true,
       message: `Pengajuan pesanan (${created.orderCode}) tercatat. Menunggu penetapan harga dari owner.`,
@@ -423,19 +556,45 @@ router.get(
 
 router.post(
   '/chats',
+  optionalAuth,
   validate(chatRequestSchema),
   asyncHandler(async (req, res) => {
     const { message, activeProductId, sessionId, logOnly, intent } = req.body;
+    const userLabel = req.user?.name || req.user?.email || 'Pengunjung';
+
     if (logOnly) {
       const saved = await db.createChatLog({
-        user: 'Pengunjung',
+        user: userLabel,
         message,
         intent: intent || 'pemesanan',
         source: 'order-flow',
       });
+      await logActivitySafe({
+        userEmail: req.user?.email,
+        userName: req.user?.name,
+        action: 'chat_koyo',
+        targetType: 'chat',
+        targetId: String(saved.id),
+        label: `Mengirim pesan ke Koyo: "${String(message || '').slice(0, 80)}"`,
+        metadata: { intent: intent || 'pemesanan', source: 'order-flow' },
+      });
       return res.status(201).json({ success: true, data: { log: saved } });
     }
+
     const result = await processKoyoChat({ message, activeProductId, sessionId });
+    await logActivitySafe({
+      userEmail: req.user?.email,
+      userName: req.user?.name,
+      action: 'chat_koyo',
+      targetType: 'chat',
+      targetId: String(activeProductId || ''),
+      label: `Berkonsultasi dengan Koyo: "${String(message || '').slice(0, 80)}"`,
+      metadata: {
+        intent: result?.intent || 'lainnya',
+        source: result?.source || 'fallback',
+        activeProductId: activeProductId || null,
+      },
+    });
     return res.status(201).json({ success: true, data: result });
   }),
 );
@@ -467,9 +626,30 @@ router.post(
 
 router.post(
   '/metrics/view',
+  optionalAuth,
   validate(viewMetricSchema),
   asyncHandler(async (req, res) => {
-    const data = await db.incrementProductView(req.body.productId);
+    const productId = Number(req.body.productId);
+    const data = await db.incrementProductView(productId);
+
+    if (req.user?.email) {
+      const product = await db.getProductById(productId);
+      await logActivitySafe({
+        userEmail: req.user.email,
+        userName: req.user.name,
+        action: 'view_product',
+        targetType: 'product',
+        targetId: String(productId),
+        label: `Melihat produk ${product?.name || `#${productId}`}`,
+        metadata: {
+          productId,
+          productName: product?.name || '',
+          category: product?.category || '',
+          price: product?.price || 0,
+        },
+      });
+    }
+
     res.json({ success: true, data });
   }),
 );
