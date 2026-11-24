@@ -28,10 +28,23 @@ body {
 }
 
 /* Hanya gunakan fixed background di desktop/laptop (menghindari bug jitter & zoom di iOS Safari / Android) */
+/* Mode Gelap Resmi: kontras tinggi & tetap bernuansa kayu jati elegan */
 @media (prefers-color-scheme: dark) {
   body {
     background-color: #16100C !important;
     color: #F5EFE6 !important;
+  }
+
+  /* Navbar & area terang ikut jadi gelap agar serasi */
+  header,
+  nav,
+  .bg-cream,
+  .bg-sand,
+  .bg-white\/80,
+  .bg-white\/90,
+  .bg-white\/95 {
+    background-color: #1E1510 !important;
+    border-color: rgba(230, 201, 122, 0.18) !important;
   }
 
   .card,
@@ -41,6 +54,34 @@ body {
     background: #231913 !important;
     border-color: rgba(230, 201, 122, 0.22) !important;
     color: #F5EFE6 !important;
+  }
+
+  /* Paksa semua teks gelap Tailwind jadi krem terang agar terbaca jelas */
+  .text-bark,
+  .text-espresso,
+  .text-teak,
+  .text-teak-dark,
+  .text-stone-900,
+  .text-stone-800,
+  .text-neutral-900,
+  .text-neutral-800 {
+    color: #F5EFE6 !important;
+  }
+
+  /* Teks deskripsi / subjudul agar tetap jelas tapi lembut */
+  .text-bark\/80,
+  .text-bark\/75,
+  .text-bark\/70,
+  .text-teak\/80,
+  .text-stone-600,
+  .text-stone-500 {
+    color: #D6C8B8 !important;
+  }
+
+  /* Khusus tombol emas (Konsultasi Koyo) tetap pakai teks gelap biar kontras */
+  .btn-gold,
+  .btn-gold * {
+    color: #1C130E !important;
   }
 
   .field {
@@ -59,12 +100,7 @@ body {
     color: #F5EFE6 !important;
   }
 
-  /* Pastikan teks yang biasanya gelap tetap terang & mudah dibaca */
-  h1, h2, h3, h4, p, span, label, li {
-    color: inherit;
-  }
-
-  /* Paksa teks SVG/dimensi di pratinjau custom agar tidak pudar */
+  /* Teks ukuran di pratinjau custom (SVG) tetap terang */
   svg text {
     fill: #FFFDF9 !important;
   }
