@@ -12,6 +12,7 @@ import {
   ExternalLink,
   LogOut,
   CalendarDays,
+  Activity,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useApp } from '../../context/AppContext';
@@ -20,7 +21,7 @@ import { getShopStatus } from '../../utils/format';
 import { SWAGGER_DOCS_URL } from '../../services/api';
 
 export default function AdminLayout() {
-  const { isLoggedIn, logoutAdmin, backendOnline, orders } = useApp();
+  const { user, isLoggedIn, logoutAdmin, backendOnline, orders } = useApp();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   if (!isLoggedIn) return <Navigate to="/admin/login" replace />;
@@ -33,7 +34,13 @@ export default function AdminLayout() {
     year: 'numeric',
   });
 
-  const newOrders = orders.filter((o) => o.status === 'Menunggu Konfirmasi WA' || o.status === 'Baru').length;
+  const newOrders = orders.filter(
+    (o) =>
+      o.status === 'Menunggu Harga Owner' ||
+      o.status === 'Menunggu Konfirmasi WA' ||
+      o.status === 'Baru',
+  ).length;
+
   const items = [
     { to: '/admin', label: 'Ringkasan', icon: LayoutDashboard, end: true },
     { to: '/admin/orders', label: 'Pesanan', icon: ShoppingBag, badge: newOrders },
@@ -43,10 +50,19 @@ export default function AdminLayout() {
     { to: '/admin/faqs', label: 'FAQ', icon: HelpCircle },
     { to: '/admin/testimonials', label: 'Testimoni', icon: Quote },
     { to: '/admin/chats', label: 'Log Chat', icon: MessageSquare },
+    { to: '/admin/activities', label: 'Aktivitas Akun', icon: Activity },
     { to: '/admin/analytics', label: 'Analitik', icon: BarChart2 },
   ];
 
-  const currentItem = items.find((it) => (it.end ? pathname === it.to : pathname.startsWith(it.to))) || items[0];
+  const currentItem =
+    items.find((it) => (it.end ? pathname === it.to : pathname.startsWith(it.to))) || items[0];
+
+  const ownerInitials = (user?.name || 'NS')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join('');
 
   const logout = () => {
     logoutAdmin();
@@ -59,7 +75,9 @@ export default function AdminLayout() {
       <LogoMark size={40} />
       <div className="leading-tight">
         <p className="font-heading text-lg font-bold text-cream">Meuble Le'Koyo</p>
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-light">Executive Dashboard</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-light">
+          Executive Dashboard
+        </p>
       </div>
     </div>
   );
@@ -87,7 +105,12 @@ export default function AdminLayout() {
             >
               {({ isActive }) => (
                 <>
-                  <it.icon size={18} className={isActive ? 'text-gold-light' : 'text-gold-light/65 group-hover:text-gold-light'} />
+                  <it.icon
+                    size={18}
+                    className={
+                      isActive ? 'text-gold-light' : 'text-gold-light/65 group-hover:text-gold-light'
+                    }
+                  />
                   <span className="flex-1">{it.label}</span>
                   {it.badge > 0 && (
                     <span className="grid h-6 min-w-6 place-items-center rounded-full bg-gold px-1.5 text-xs font-bold text-espresso shadow-gold">
@@ -130,24 +153,45 @@ export default function AdminLayout() {
         {/* Topbar Desktop */}
         <header className="sticky top-0 z-30 hidden items-center justify-between border-b border-gold/20 bg-cream/90 px-8 py-3.5 backdrop-blur-md lg:flex">
           <div className="flex items-center gap-2.5 text-sm">
-            <span className="font-heading text-base font-bold text-espresso">{currentItem.label}</span>
+            <span className="font-heading text-base font-bold text-espresso">
+              {currentItem.label}
+            </span>
             <span className="text-gold">✦</span>
             <span className="inline-flex items-center gap-1.5 text-muted">
               <CalendarDays size={14} className="text-gold-dark" /> {todayText}
             </span>
           </div>
           <div className="flex items-center gap-2.5">
-            <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold shadow-soft ${backendOnline ? 'border-sage/35 bg-sage/10 text-sage' : 'border-red-300 bg-red-50 text-red-700'}`}>
-              <span className={`h-2 w-2 rounded-full ${backendOnline ? 'bg-sage' : 'bg-red-500'}`} />
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold shadow-soft ${
+                backendOnline
+                  ? 'border-sage/35 bg-sage/10 text-sage'
+                  : 'border-red-300 bg-red-50 text-red-700'
+              }`}
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${backendOnline ? 'bg-sage' : 'bg-red-500'}`}
+              />
               {backendOnline ? 'API Terhubung' : 'API Offline'}
             </span>
             <span className="inline-flex items-center gap-2 rounded-full border border-gold/30 bg-white px-3.5 py-1.5 text-xs font-semibold text-bark shadow-soft">
-              <span className={`h-2 w-2 rounded-full ${status.open ? 'bg-sage' : 'bg-wood/60'}`} />
+              <span
+                className={`h-2 w-2 rounded-full ${status.open ? 'bg-sage' : 'bg-wood/60'}`}
+              />
               {status.label}
             </span>
-            <span className="grid h-9 w-9 place-items-center rounded-full border border-gold/45 bg-espresso font-heading text-sm font-bold text-gold-light">
-              NS
-            </span>
+            {user?.picture ? (
+              <img
+                src={user.picture}
+                alt={user.name || 'Owner'}
+                className="h-9 w-9 rounded-full border border-gold/50 object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <span className="grid h-9 w-9 place-items-center rounded-full border border-gold/45 bg-espresso font-heading text-sm font-bold text-gold-light">
+                {ownerInitials || 'NS'}
+              </span>
+            )}
           </div>
         </header>
 
@@ -156,15 +200,28 @@ export default function AdminLayout() {
           <div className="flex items-center justify-between px-4 py-3.5">
             {Brand}
             <div className="flex gap-1 text-cream/85">
-              <a href="/" target="_blank" rel="noreferrer" className="rounded-xl p-2.5 hover:bg-white/10" aria-label="Lihat website">
+              <a
+                href="/"
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-xl p-2.5 hover:bg-white/10"
+                aria-label="Lihat website"
+              >
                 <ExternalLink size={20} className="text-gold-light" />
               </a>
-              <button onClick={logout} className="rounded-xl p-2.5 hover:bg-white/10" aria-label="Keluar">
+              <button
+                onClick={logout}
+                className="rounded-xl p-2.5 hover:bg-white/10"
+                aria-label="Keluar"
+              >
                 <LogOut size={20} />
               </button>
             </div>
           </div>
-          <nav className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3.5" aria-label="Menu admin">
+          <nav
+            className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3.5"
+            aria-label="Menu admin"
+          >
             {items.map((it) => (
               <NavLink
                 key={it.to}

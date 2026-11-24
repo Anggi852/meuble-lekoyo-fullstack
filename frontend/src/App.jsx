@@ -19,7 +19,7 @@ import Sales from './pages/admin/Sales';
 import ScrollToTop from './components/ScrollToTop';
 import { AppProvider, useApp } from './context/AppContext';
 import MyOrders from './pages/MyOrders';
-
+import Activities from './pages/admin/Activities';
 // Pelindung ketat: pelanggan yang sudah login tidak akan pernah masuk ke area /admin
 function RequireOwner({ children }) {
   const { user, isOwner } = useApp();
@@ -63,6 +63,7 @@ function App() {
           <Route path="faqs" element={<Faqs />} />
           <Route path="testimonials" element={<Testimonials />} />
           <Route path="chats" element={<Chats />} />
+          <Route path="activities" element={<Activities />} />
           <Route path="sales" element={<Sales />} />
           <Route path="analytics" element={<Analytics />} />
         </Route>
