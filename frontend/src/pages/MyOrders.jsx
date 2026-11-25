@@ -9,6 +9,7 @@ import {
   MessageCircle,
   Clock,
   CheckCircle2,
+  XCircle,
   Sparkles,
   ArrowRight,
 } from 'lucide-react';
@@ -59,10 +60,13 @@ export default function MyOrders() {
   };
 
   const buildWaLink = (order) => {
+    const est = Number(order.estimatedPrice ?? order.total) || 0;
     const hargaText =
       order.finalPrice != null
         ? `Harga Final Owner: ${formatRp(order.finalPrice)}`
-        : `Estimasi Awal: ${formatRp(order.estimatedPrice ?? order.total)}`;
+        : est > 0
+          ? `Estimasi Awal: ${formatRp(est)}`
+          : 'Harga: Menunggu konfirmasi Owner';
     const text = [
       `Halo Pak Nanang, saya ingin konfirmasi pesanan saya:`,
       `• Kode Pesanan: ${order.orderCode || `#${order.id}`}`,
@@ -151,6 +155,9 @@ export default function MyOrders() {
             const badgeClass =
               STATUS_STYLE[order.status] || 'bg-sand text-espresso border-line';
             const hasFinalPrice = order.finalPrice !== null && order.finalPrice !== undefined;
+            const estPrice = Number(order.estimatedPrice ?? order.total) || 0;
+            const isDone = order.status === 'Selesai';
+            const isCancelled = order.status === 'Dibatalkan';
 
             return (
               <article
@@ -187,19 +194,32 @@ export default function MyOrders() {
                         <p className="font-heading text-xl font-bold text-espresso">
                           {formatRp(order.finalPrice)}
                         </p>
-                        {order.estimatedPrice > 0 && order.estimatedPrice !== order.finalPrice && (
+                        {estPrice > 0 && estPrice !== order.finalPrice && (
                           <p className="text-xs text-muted line-through">
-                            Estimasi awal: {formatRp(order.estimatedPrice)}
+                            Estimasi awal: {formatRp(estPrice)}
                           </p>
                         )}
                       </>
+                    ) : isDone ? (
+                      <>
+                        <p className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
+                          <CheckCircle2 size={14} /> Pesanan Selesai
+                        </p>
+                        <p className="font-heading text-base font-bold text-espresso">
+                          {estPrice > 0 ? formatRp(estPrice) : 'Disepakati via WA'}
+                        </p>
+                      </>
+                    ) : isCancelled ? (
+                      <p className="inline-flex items-center gap-1 text-xs font-semibold text-red-600">
+                        <XCircle size={14} /> Pesanan Dibatalkan
+                      </p>
                     ) : (
                       <>
                         <p className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700">
                           <Clock size={14} /> Menunggu Harga Owner
                         </p>
                         <p className="font-heading text-lg font-bold text-espresso">
-                          Est. {formatRp(order.estimatedPrice ?? order.total)}
+                          {estPrice > 0 ? `Est. ${formatRp(estPrice)}` : 'Harga via Owner'}
                         </p>
                       </>
                     )}

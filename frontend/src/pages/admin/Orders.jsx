@@ -443,7 +443,15 @@ export default function Orders() {
                       <select
                         value={displayStatus}
                         onChange={(e) => {
-                          updateOrderStatus(o.id, e.target.value);
+                          const nextStatus = e.target.value;
+                          if (
+                            (nextStatus === 'Diproses' || nextStatus === 'Selesai') &&
+                            o.finalPrice == null
+                          ) {
+                            toast.error('Tetapkan Harga Final Owner terlebih dahulu sebelum memproses atau menyelesaikan pesanan.');
+                            return;
+                          }
+                          updateOrderStatus(o.id, nextStatus);
                           toast.success('Status diperbarui');
                         }}
                         className="field !w-auto !py-2 text-sm"
