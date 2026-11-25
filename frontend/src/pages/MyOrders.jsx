@@ -91,6 +91,8 @@ export default function MyOrders() {
       });
       toast.success('Terima kasih! Ulasan Anda sudah tampil.');
       setReviewOrder(null);
+    } catch {
+      // Pesan error sudah ditampilkan lewat toast di AppContext
     } finally {
       setSendingReview(false);
     }

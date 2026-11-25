@@ -478,7 +478,7 @@ export function AppProvider({ children }) {
       throw err;
     }
   };
-  
+
   /* -------------------- PESANAN & PENJUALAN -------------------- */
   const addOrder = async (order) => {
     try {
@@ -636,6 +636,7 @@ export function AppProvider({ children }) {
     testimonials,
     saveTestimonial,
     removeTestimonial,
+    submitOrderReview,
     customPortfolio,
     saveCustomPortfolio,
     removeCustomPortfolio,
