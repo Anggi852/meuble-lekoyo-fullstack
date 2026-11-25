@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Crown,
   ArrowRight,
+  Eye,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
@@ -56,6 +57,8 @@ export default function Navbar() {
   const accountRef = useRef(null);
 
   const { wishlist, openKoyoWith, user, isOwner, loginWithGoogle, logoutUser, myOrders } = useApp();
+
+  const visibleNavItems = isOwner ? navItems.filter((item) => !item.wish) : navItems;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -122,9 +125,9 @@ export default function Navbar() {
             <span className="inline-flex items-center gap-1.5 font-semibold tracking-wide">
               <Crown size={13} className="text-gold" />
               <span>
-                Mode Owner Aktif{' '}
+                Mode Pratinjau Owner{' '}
                 <span className="hidden text-cream/75 sm:inline">
-                  · {user?.name || 'Pengelola Meuble Le\'Koyo'}
+                  · {user?.name || "Pengelola Meuble Le'Koyo"} (Hanya Lihat)
                 </span>
               </span>
             </span>
@@ -155,7 +158,7 @@ export default function Navbar() {
           </Link>
 
           <div className="hidden items-center gap-1 md:flex">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <NavLink
                 key={item.name}
                 to={item.path}
@@ -182,7 +185,7 @@ export default function Navbar() {
               </NavLink>
             ))}
 
-            {user && (
+            {user && !isOwner && (
               <NavLink
                 to="/my-orders"
                 className={({ isActive }) =>
@@ -213,22 +216,30 @@ export default function Navbar() {
 
             <div className="mx-1.5 h-6 w-px bg-line" aria-hidden="true" />
 
-            <button
-              type="button"
-              onClick={() => openKoyoWith()}
-              className="btn-soft !min-h-[40px] !px-3.5 !py-2 text-sm"
-            >
-              <Sparkles size={15} className="text-gold-dark" /> Tanya Koyo
-            </button>
+            {isOwner ? (
+              <span className="inline-flex items-center gap-1.5 rounded-xl border border-gold/35 bg-sand/70 px-3 py-1.5 text-xs font-semibold text-teak">
+                <Eye size={14} className="text-gold-dark" /> Pratinjau Galeri
+              </span>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => openKoyoWith()}
+                  className="btn-soft !min-h-[40px] !px-3.5 !py-2 text-sm"
+                >
+                  <Sparkles size={15} className="text-gold-dark" /> Tanya Koyo
+                </button>
 
-            <a
-              href={WA_BASE}
-              target="_blank"
-              rel="noreferrer"
-              className="btn-primary btn-shimmer ml-1 !min-h-[40px] !px-3.5 !py-2 text-sm"
-            >
-              <MessageCircle size={16} className="text-gold-light" /> WA
-            </a>
+                <a
+                  href={WA_BASE}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-primary btn-shimmer ml-1 !min-h-[40px] !px-3.5 !py-2 text-sm"
+                >
+                  <MessageCircle size={16} className="text-gold-light" /> WA
+                </a>
+              </>
+            )}
 
             {/* Akun / Login Google */}
             <div className="relative ml-1" ref={accountRef}>
@@ -299,7 +310,7 @@ export default function Navbar() {
                         )}
                       </div>
 
-                      {isOwner && (
+                      {isOwner ? (
                         <Link
                           to="/admin"
                           onClick={() => setAccountOpen(false)}
@@ -310,23 +321,25 @@ export default function Navbar() {
                           </span>
                           <ArrowRight size={14} />
                         </Link>
+                      ) : (
+                        <>
+                          <Link
+                            to="/my-orders"
+                            onClick={() => setAccountOpen(false)}
+                            className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-espresso transition hover:bg-sand"
+                          >
+                            <ClipboardList size={16} className="text-teak" /> Pesanan &amp; Aktivitas Saya
+                          </Link>
+
+                          <Link
+                            to="/wishlist"
+                            onClick={() => setAccountOpen(false)}
+                            className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-espresso transition hover:bg-sand"
+                          >
+                            <Heart size={16} className="text-teak" /> Favorit Saya ({wishlist.length})
+                          </Link>
+                        </>
                       )}
-
-                      <Link
-                        to="/my-orders"
-                        onClick={() => setAccountOpen(false)}
-                        className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-espresso transition hover:bg-sand"
-                      >
-                        <ClipboardList size={16} className="text-teak" /> Pesanan &amp; Aktivitas Saya
-                      </Link>
-
-                      <Link
-                        to="/wishlist"
-                        onClick={() => setAccountOpen(false)}
-                        className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-espresso transition hover:bg-sand"
-                      >
-                        <Heart size={16} className="text-teak" /> Favorit Saya ({wishlist.length})
-                      </Link>
 
                       <button
                         type="button"
@@ -359,22 +372,26 @@ export default function Navbar() {
           </div>
 
           <div className="flex items-center gap-1 md:hidden">
-            <button
-              type="button"
-              onClick={() => openKoyoWith()}
-              className="rounded-xl border border-gold/30 bg-sand p-2.5 text-teak"
-              aria-label="Tanya Koyo"
-            >
-              <Sparkles size={20} className="text-gold-dark" />
-            </button>
-            <Link to="/wishlist" className="relative rounded-lg p-3 text-muted" aria-label="Favorit">
-              <Heart size={22} />
-              {wishlist.length > 0 && (
-                <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-gold px-1 text-[10px] font-bold text-espresso">
-                  {wishlist.length}
-                </span>
-              )}
-            </Link>
+            {!isOwner && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => openKoyoWith()}
+                  className="rounded-xl border border-gold/30 bg-sand p-2.5 text-teak"
+                  aria-label="Tanya Koyo"
+                >
+                  <Sparkles size={20} className="text-gold-dark" />
+                </button>
+                <Link to="/wishlist" className="relative rounded-lg p-3 text-muted" aria-label="Favorit">
+                  <Heart size={22} />
+                  {wishlist.length > 0 && (
+                    <span className="absolute right-1 top-1 grid h-4 min-w-4 place-items-center rounded-full bg-gold px-1 text-[10px] font-bold text-espresso">
+                      {wishlist.length}
+                    </span>
+                  )}
+                </Link>
+              </>
+            )}
             <button
               className="rounded-lg p-3 text-espresso"
               onClick={() => setOpen(!open)}
@@ -405,7 +422,7 @@ export default function Navbar() {
               </Link>
             )}
 
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <NavLink
                 key={item.name}
                 to={item.path}
@@ -421,7 +438,7 @@ export default function Navbar() {
               </NavLink>
             ))}
 
-            {user && (
+            {user && !isOwner && (
               <NavLink
                 to="/my-orders"
                 onClick={() => setOpen(false)}
@@ -468,19 +485,23 @@ export default function Navbar() {
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                openKoyoWith();
-              }}
-              className="btn-soft mt-2 w-full"
-            >
-              <Sparkles size={17} className="text-gold-dark" /> Ngobrol dengan Koyo
-            </button>
-            <a href={WA_BASE} target="_blank" rel="noreferrer" className="btn-primary mt-2 w-full">
-              <MessageCircle size={18} className="text-gold-light" /> Hubungi Kami
-            </a>
+            {!isOwner && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    openKoyoWith();
+                  }}
+                  className="btn-soft mt-2 w-full"
+                >
+                  <Sparkles size={17} className="text-gold-dark" /> Ngobrol dengan Koyo
+                </button>
+                <a href={WA_BASE} target="_blank" rel="noreferrer" className="btn-primary mt-2 w-full">
+                  <MessageCircle size={18} className="text-gold-light" /> Hubungi Kami
+                </a>
+              </>
+            )}
           </motion.div>
         )}
       </nav>

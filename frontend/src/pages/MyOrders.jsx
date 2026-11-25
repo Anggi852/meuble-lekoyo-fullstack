@@ -5,6 +5,7 @@ import { AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
   ClipboardList,
+  Crown,
   RefreshCw,
   MapPin,
   MessageCircle,
@@ -37,7 +38,7 @@ const STATUS_STYLE = {
 };
 
 export default function MyOrders() {
-  const { user, myOrders, loadMyOrders, loginWithGoogle, testimonials, submitOrderReview } = useApp();
+  const { user, isOwner, myOrders, loadMyOrders, loginWithGoogle, testimonials, submitOrderReview } = useApp();
   const [refreshing, setRefreshing] = useState(false);
   const [reviewOrder, setReviewOrder] = useState(null);
   const [rating, setRating] = useState(5);
@@ -46,10 +47,10 @@ export default function MyOrders() {
   const [sendingReview, setSendingReview] = useState(false);
 
   useEffect(() => {
-    if (user) {
+    if (user && !isOwner) {
       loadMyOrders();
     }
-  }, [user, loadMyOrders]);
+  }, [user, isOwner, loadMyOrders]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -116,6 +117,32 @@ export default function MyOrders() {
     const sep = WA_BASE.includes('?') ? '&' : '?';
     return `${WA_BASE}${sep}text=${encodeURIComponent(text)}`;
   };
+
+  if (isOwner) {
+    return (
+      <section className="mx-auto max-w-2xl px-4 py-16 text-center sm:px-6">
+        <div className="rounded-3xl border border-gold/35 bg-sand/60 p-8 shadow-soft">
+          <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-espresso text-gold-light">
+            <Crown size={28} className="text-gold" />
+          </div>
+          <h1 className="font-heading text-2xl font-bold text-espresso sm:text-3xl">
+            Halaman Khusus Pelanggan
+          </h1>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted">
+            Anda sedang login sebagai Owner. Untuk memantau, menetapkan harga final, dan mengelola pesanan masuk, silakan buka Dashboard Owner.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Link to="/admin" className="btn-primary text-sm">
+              <Crown size={16} className="text-gold-light" /> Buka Dashboard Owner
+            </Link>
+            <Link to="/" className="btn-soft text-sm">
+              Kembali ke Beranda
+            </Link>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   if (!user) {
     return (

@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Crown,
   Heart,
   History,
   Info,
@@ -52,6 +53,7 @@ export default function ProductDetail() {
     trackView,
     soldOf,
     openKoyoWith,
+    isOwner,
   } = useApp();
 
   const isCustomItem = String(id || '').startsWith('custom-');
@@ -271,7 +273,7 @@ export default function ProductDetail() {
         <div>
           <div className="flex items-start justify-between gap-4">
             <h1 className="font-heading text-3xl font-bold leading-tight text-espresso sm:text-4xl">{activeItem.name}</h1>
-            {!isCustomItem && (
+            {!isCustomItem && !isOwner && (
               <button
                 onClick={() => toggleWishlist(product)}
                 aria-pressed={liked}
@@ -335,7 +337,19 @@ export default function ProductDetail() {
             </p>
           </div>
 
-          {isCustomItem ? (
+          {isOwner ? (
+            <div className="mt-6 rounded-2xl border border-gold/40 bg-espresso p-5 text-cream shadow-soft">
+              <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gold-light">
+                <Crown size={14} className="text-gold" /> Mode Pratinjau Owner
+              </p>
+              <p className="mt-1.5 text-sm text-cream/80">
+                Anda sedang meninjau tampilan halaman produk. Akun Owner tidak dapat mengajukan pemesanan.
+              </p>
+              <Link to="/admin" className="btn-gold mt-4 w-full text-sm">
+                Kelola Produk di Dashboard Owner
+              </Link>
+            </div>
+          ) : isCustomItem ? (
             <div className="mt-6 space-y-3">
               <div className="flex flex-col gap-3 sm:flex-row">
                 <button
@@ -539,7 +553,7 @@ export default function ProductDetail() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {showOrder && product && <OrderModal product={product} onClose={() => setShowOrder(false)} />}
+        {showOrder && product && !isOwner && <OrderModal product={product} onClose={() => setShowOrder(false)} />}
       </AnimatePresence>
     </div>
   );

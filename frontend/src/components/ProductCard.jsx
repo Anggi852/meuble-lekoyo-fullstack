@@ -7,7 +7,7 @@ import { formatRupiah } from '../utils/format';
 import { getProductImages } from '../utils/image';
 
 export default function ProductCard({ product }) {
-  const { wishlist, toggleWishlist, soldOf, openKoyoWith } = useApp();
+  const { wishlist, toggleWishlist, soldOf, openKoyoWith, isOwner } = useApp();
   const sold = soldOf(product.id).total;
   const isSold = product.stockStatus === 'Terjual';
   const isWishlisted = wishlist.some((item) => item.id === product.id);
@@ -17,29 +17,33 @@ export default function ProductCard({ product }) {
 
   return (
     <article className="card-alive group relative flex flex-col overflow-hidden">
-      <motion.button
-        whileTap={{ scale: 0.82 }}
-        onClick={() => toggleWishlist(product)}
-        className="absolute right-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full border border-white/70 bg-white/90 shadow-soft backdrop-blur-md transition hover:scale-105 hover:border-gold"
-        aria-label={isWishlisted ? 'Hapus dari favorit' : 'Simpan ke favorit'}
-        aria-pressed={isWishlisted}
-      >
-        <Heart size={18} className={isWishlisted ? 'fill-red-500 text-red-500' : 'text-bark/70'} />
-      </motion.button>
+      {!isOwner && (
+        <>
+          <motion.button
+            whileTap={{ scale: 0.82 }}
+            onClick={() => toggleWishlist(product)}
+            className="absolute right-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full border border-white/70 bg-white/90 shadow-soft backdrop-blur-md transition hover:scale-105 hover:border-gold"
+            aria-label={isWishlisted ? 'Hapus dari favorit' : 'Simpan ke favorit'}
+            aria-pressed={isWishlisted}
+          >
+            <Heart size={18} className={isWishlisted ? 'fill-red-500 text-red-500' : 'text-bark/70'} />
+          </motion.button>
 
-      {/* Tombol hover cepat khusus desktop/laptop */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          openKoyoWith(`Mau pesan ${product.name}`, product);
-        }}
-        className="absolute right-3 top-[10.5rem] z-10 hidden items-center gap-1 rounded-full border border-gold/50 bg-espresso/95 px-3 py-1.5 text-xs font-semibold text-cream opacity-0 shadow-lift backdrop-blur-sm transition-all duration-300 group-hover:opacity-100 lg:inline-flex"
-        title={`Tanya atau pesan ${product.name} lewat Koyo`}
-      >
-        <Sparkles size={12} className="text-gold-light" /> Tanya Koyo
-      </button>
+          {/* Tombol hover cepat khusus desktop/laptop */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              openKoyoWith(`Mau pesan ${product.name}`, product);
+            }}
+            className="absolute right-3 top-[10.5rem] z-10 hidden items-center gap-1 rounded-full border border-gold/50 bg-espresso/95 px-3 py-1.5 text-xs font-semibold text-cream opacity-0 shadow-lift backdrop-blur-sm transition-all duration-300 group-hover:opacity-100 lg:inline-flex"
+            title={`Tanya atau pesan ${product.name} lewat Koyo`}
+          >
+            <Sparkles size={12} className="text-gold-light" /> Tanya Koyo
+          </button>
+        </>
+      )}
 
       <Link to={`/product/${product.id}`} className="flex flex-1 flex-col">
         {/* Proporsi gambar adaptif: 16:10 di HP, 4:3 di Tablet/Laptop */}
@@ -52,7 +56,6 @@ export default function ProductCard({ product }) {
             defaultWidth={640}
             className="h-full w-full object-cover object-center transition-transform duration-700 ease-out group-hover:scale-105"
           />
-          {/* Saat di-hover di desktop, tampilkan sudut foto kedua secara halus */}
           {secondaryPhoto && (
             <ResponsiveImage
               src={secondaryPhoto}
@@ -102,16 +105,18 @@ export default function ProductCard({ product }) {
         </div>
       </Link>
 
-      {/* Tombol sentuh cepat untuk HP Android & iOS */}
-      <div className="border-t border-line/60 bg-cream/70 px-4 py-2.5 lg:hidden">
-        <button
-          type="button"
-          onClick={() => openKoyoWith(`Mau pesan ${product.name}`, product)}
-          className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-gold/35 bg-white py-2 text-xs font-bold text-espresso shadow-soft active:scale-[0.98]"
-        >
-          <Sparkles size={13} className="text-gold-dark" /> Tanya / Pesan lewat Koyo
-        </button>
-      </div>
+      {/* Tombol sentuh cepat untuk HP — hanya untuk pelanggan */}
+      {!isOwner && (
+        <div className="border-t border-line/60 bg-cream/70 px-4 py-2.5 lg:hidden">
+          <button
+            type="button"
+            onClick={() => openKoyoWith(`Mau pesan ${product.name}`, product)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-gold/35 bg-white py-2 text-xs font-bold text-espresso shadow-soft active:scale-[0.98]"
+          >
+            <Sparkles size={13} className="text-gold-dark" /> Tanya / Pesan lewat Koyo
+          </button>
+        </div>
+      )}
     </article>
   );
 }

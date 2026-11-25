@@ -10,6 +10,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Crown,
   History,
   ImagePlus,
   Info,
@@ -161,7 +162,7 @@ function resolveInitialState(navState) {
 }
 
 export default function Custom() {
-  const { addOrder, openKoyoWith, user } = useApp();
+  const { addOrder, openKoyoWith, user, isOwner } = useApp();
   const location = useLocation();
   const init = useMemo(() => resolveInitialState(location.state), [location.state]);
 
@@ -297,7 +298,7 @@ export default function Custom() {
   };
 
   const onSubmit = async (data) => {
-    if (submitting) return;
+    if (isOwner || submitting) return;
     setSubmitting(true);
     const cleanPhone = normalizePhone(data.phone);
     try {
@@ -739,167 +740,190 @@ export default function Custom() {
                 </div>
               </div>
 
-              <div className="border-t border-line pt-4">
-                <Label htmlFor="note">Catatan tambahan (opsional)</Label>
-                <textarea
-                  id="note"
-                  rows={2}
-                  className="field"
-                  placeholder="Contoh: posisi kompor/wastafel sebelah kanan, minta ukiran kaligrafi di mimbar, atau request sekat khusus..."
-                  {...register('note')}
-                />
-                <Err e={errors.note} />
-              </div>
-
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-[15px] font-medium text-bark">Foto / sketsa contoh (opsional, maks. 3)</p>
-                  {photos.length > 0 && <span className="text-xs font-semibold text-muted">{photos.length}/3</span>}
-                </div>
-
-                {photos.length > 0 && (
-                  <div className="mb-3 grid grid-cols-3 gap-2.5">
-                    {photos.map((ph) => (
-                      <div key={ph.id} className="relative overflow-hidden rounded-xl border border-line bg-cream">
-                        <img src={ph.url} alt={ph.name} className="aspect-square w-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => removePhoto(ph.id)}
-                          aria-label={`Hapus ${ph.name}`}
-                          className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-bark/80 text-white hover:bg-red-600"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
+              {!isOwner && (
+                <>
+                  <div className="border-t border-line pt-4">
+                    <Label htmlFor="note">Catatan tambahan (opsional)</Label>
+                    <textarea
+                      id="note"
+                      rows={2}
+                      className="field"
+                      placeholder="Contoh: posisi kompor/wastafel sebelah kanan, minta ukiran kaligrafi di mimbar, atau request sekat khusus..."
+                      {...register('note')}
+                    />
+                    <Err e={errors.note} />
                   </div>
-                )}
 
-                {photos.length < 3 && (
-                  <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-line py-4 text-sm font-medium text-muted transition hover:border-teak hover:bg-cream/60 hover:text-teak">
-                    <ImagePlus size={18} /> Pilih gambar referensi
-                    <input type="file" accept="image/*" multiple className="sr-only" onChange={onPhotos} />
-                  </label>
-                )}
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-[15px] font-medium text-bark">Foto / sketsa contoh (opsional, maks. 3)</p>
+                      {photos.length > 0 && <span className="text-xs font-semibold text-muted">{photos.length}/3</span>}
+                    </div>
 
-                <p className="mt-2 flex gap-1.5 text-xs text-muted">
-                  <Info size={15} className="mt-0.5 shrink-0 text-teak" />
-                  Foto referensi &amp; pratinjau ukuran otomatis tersimpan ke Dashboard Pak Nanang saat diajukan.
-                </p>
-              </div>
+                    {photos.length > 0 && (
+                      <div className="mb-3 grid grid-cols-3 gap-2.5">
+                        {photos.map((ph) => (
+                          <div key={ph.id} className="relative overflow-hidden rounded-xl border border-line bg-cream">
+                            <img src={ph.url} alt={ph.name} className="aspect-square w-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => removePhoto(ph.id)}
+                              aria-label={`Hapus ${ph.name}`}
+                              className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-bark/80 text-white hover:bg-red-600"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {photos.length < 3 && (
+                      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-line py-4 text-sm font-medium text-muted transition hover:border-teak hover:bg-cream/60 hover:text-teak">
+                        <ImagePlus size={18} /> Pilih gambar referensi
+                        <input type="file" accept="image/*" multiple className="sr-only" onChange={onPhotos} />
+                      </label>
+                    )}
+
+                    <p className="mt-2 flex gap-1.5 text-xs text-muted">
+                      <Info size={15} className="mt-0.5 shrink-0 text-teak" />
+                      Foto referensi &amp; pratinjau ukuran otomatis tersimpan ke Dashboard Pak Nanang saat diajukan.
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           </section>
 
-          {/* LANGKAH 4: DATA PEMESAN */}
-          <section>
-            <StepHeader
-              n={4}
-              title="Data pemesan & pengiriman"
-              subtitle="Melayani pemesanan Jambi & luar daerah (Palembang, Padang, Pekanbaru, Batam, Medan, dll.)."
-            />
-            <div className="card space-y-4 p-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="name">Nama lengkap</Label>
-                  <input id="name" className="field" placeholder="Nama kamu" autoComplete="name" {...register('name')} />
-                  {user?.email && (
-                    <p className="mt-1 text-xs text-muted">
-                      Terhubung ke akun <strong className="text-espresso">{user.email}</strong> (otomatis masuk ke Pesanan Saya).
-                    </p>
-                  )}
-                  <Err e={errors.name} />
-                </div>
-                <div>
-                  <Label htmlFor="phone">Nomor WhatsApp aktif</Label>
-                  <input id="phone" type="tel" inputMode="tel" className="field" placeholder="Contoh: 081234567890" autoComplete="tel" {...register('phone')} />
-                  <Err e={errors.phone} />
-                </div>
+          {/* LANGKAH 4: DATA PEMESAN (DISEMBUNYIKAN SAAT MODE OWNER) */}
+          {isOwner ? (
+            <section>
+              <div className="rounded-2xl border border-gold/40 bg-espresso p-6 text-cream shadow-soft">
+                <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gold-light">
+                  <Crown size={14} className="text-gold" /> Mode Pratinjau Owner
+                </p>
+                <h3 className="font-heading mt-1.5 text-xl font-bold text-cream">
+                  Form Pengajuan Pesanan Dinonaktifkan
+                </h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-cream/80">
+                  Anda tetap dapat menguji pilihan jenis furnitur, ukuran, dan warna finishing pada pratinjau di atas. Akun Owner tidak dapat mengajukan pesanan custom.
+                </p>
+                <Link to="/admin" className="btn-gold mt-4 inline-flex text-sm">
+                  <Crown size={15} /> Kelola Pesanan Masuk di Dashboard Owner
+                </Link>
               </div>
-
-              <div>
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <label htmlFor="address" className="text-[15px] font-medium text-bark">
-                    Kota &amp; alamat pengiriman
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleGetLocation}
-                    disabled={locating || submitting}
-                    className="inline-flex items-center gap-1 rounded-lg border border-gold/40 bg-sand px-2.5 py-1 text-xs font-semibold text-teak transition hover:bg-gold/20 disabled:opacity-60"
-                  >
-                    {locating ? <Loader2 size={13} className="animate-spin" /> : <MapPin size={13} />}
-                    {locating ? 'Mencari GPS...' : coords ? 'Perbarui GPS' : 'Tandai Lokasi GPS'}
-                  </button>
+            </section>
+          ) : (
+            <section>
+              <StepHeader
+                n={4}
+                title="Data pemesan & pengiriman"
+                subtitle="Melayani pemesanan Jambi & luar daerah (Palembang, Padang, Pekanbaru, Batam, Medan, dll.)."
+              />
+              <div className="card space-y-4 p-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="name">Nama lengkap</Label>
+                    <input id="name" className="field" placeholder="Nama kamu" autoComplete="name" {...register('name')} />
+                    {user?.email && (
+                      <p className="mt-1 text-xs text-muted">
+                        Terhubung ke akun <strong className="text-espresso">{user.email}</strong> (otomatis masuk ke Pesanan Saya).
+                      </p>
+                    )}
+                    <Err e={errors.name} />
+                  </div>
+                  <div>
+                    <Label htmlFor="phone">Nomor WhatsApp aktif</Label>
+                    <input id="phone" type="tel" inputMode="tel" className="field" placeholder="Contoh: 081234567890" autoComplete="tel" {...register('phone')} />
+                    <Err e={errors.phone} />
+                  </div>
                 </div>
-                <textarea
-                  id="address"
-                  rows={2}
-                  className="field"
-                  placeholder="Contoh: Jl. Sudirman No. 12, Palembang"
-                  {...register('address')}
-                />
-                {coords && (
-                  <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-sage/30 bg-sage/10 px-3 py-1.5 text-xs text-espresso">
-                    <a
-                      href={`https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 font-semibold text-teak underline"
-                    >
-                      <MapPin size={13} /> Titik GPS tersimpan ({coords.latitude}, {coords.longitude})
-                    </a>
+
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <label htmlFor="address" className="text-[15px] font-medium text-bark">
+                      Kota &amp; alamat pengiriman
+                    </label>
                     <button
                       type="button"
-                      onClick={() => setCoords(null)}
-                      aria-label="Hapus titik GPS"
-                      className="rounded p-0.5 text-muted hover:text-red-600"
+                      onClick={handleGetLocation}
+                      disabled={locating || submitting}
+                      className="inline-flex items-center gap-1 rounded-lg border border-gold/40 bg-sand px-2.5 py-1 text-xs font-semibold text-teak transition hover:bg-gold/20 disabled:opacity-60"
                     >
-                      <X size={14} />
+                      {locating ? <Loader2 size={13} className="animate-spin" /> : <MapPin size={13} />}
+                      {locating ? 'Mencari GPS...' : coords ? 'Perbarui GPS' : 'Tandai Lokasi GPS'}
                     </button>
                   </div>
-                )}
-                <Err e={errors.address} />
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="quantity">Jumlah unit</Label>
-                  <input id="quantity" type="number" min={1} className="field" {...register('quantity')} />
-                  <Err e={errors.quantity} />
-                </div>
-                <div>
-                  <Label htmlFor="payment">Pembayaran</Label>
-                  <select id="payment" className="field" {...register('payment')}>
-                    <option value="Tunai">Tunai / M-Banking</option>
-                    <option value="Tabung">Sistem Tabung</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="needBy">Dibutuhkan sebelum (opsional)</Label>
-                <input id="needBy" type="date" min={minDate()} className="field" {...register('needBy')} />
-                <Err e={errors.needBy} />
-                <p className="mt-1.5 text-xs text-muted">
-                  Estimasi pengerjaan ±2 bulan. Pesanan mendadak (1 minggu / 1 bulan) belum dapat diterima.
-                </p>
-              </div>
-
-              <div className="pt-1">
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gold/40 bg-cream/85 p-3.5 text-sm leading-relaxed text-bark">
-                  <input
-                    type="checkbox"
-                    {...register('agreedToTerms')}
-                    className="mt-0.5 h-5 w-5 shrink-0 accent-[#6E3F22]"
+                  <textarea
+                    id="address"
+                    rows={2}
+                    className="field"
+                    placeholder="Contoh: Jl. Sudirman No. 12, Palembang"
+                    {...register('address')}
                   />
-                  <span>
-                    Saya mengisi data dengan benar dan memahami pengajuan custom ini berstatus <strong>Menunggu Konfirmasi WA</strong> (pengerjaan baru dimulai setelah harga akhir &amp; DP disepakati bersama Pak Nanang di WhatsApp).
-                  </span>
-                </label>
-                <Err e={errors.agreedToTerms} />
+                  {coords && (
+                    <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-sage/30 bg-sage/10 px-3 py-1.5 text-xs text-espresso">
+                      <a
+                        href={`https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 font-semibold text-teak underline"
+                      >
+                        <MapPin size={13} /> Titik GPS tersimpan ({coords.latitude}, {coords.longitude})
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setCoords(null)}
+                        aria-label="Hapus titik GPS"
+                        className="rounded p-0.5 text-muted hover:text-red-600"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+                  <Err e={errors.address} />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="quantity">Jumlah unit</Label>
+                    <input id="quantity" type="number" min={1} className="field" {...register('quantity')} />
+                    <Err e={errors.quantity} />
+                  </div>
+                  <div>
+                    <Label htmlFor="payment">Pembayaran</Label>
+                    <select id="payment" className="field" {...register('payment')}>
+                      <option value="Tunai">Tunai / M-Banking</option>
+                      <option value="Tabung">Sistem Tabung</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="needBy">Dibutuhkan sebelum (opsional)</Label>
+                  <input id="needBy" type="date" min={minDate()} className="field" {...register('needBy')} />
+                  <Err e={errors.needBy} />
+                  <p className="mt-1.5 text-xs text-muted">
+                    Estimasi pengerjaan ±2 bulan. Pesanan mendadak (1 minggu / 1 bulan) belum dapat diterima.
+                  </p>
+                </div>
+
+                <div className="pt-1">
+                  <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gold/40 bg-cream/85 p-3.5 text-sm leading-relaxed text-bark">
+                    <input
+                      type="checkbox"
+                      {...register('agreedToTerms')}
+                      className="mt-0.5 h-5 w-5 shrink-0 accent-[#6E3F22]"
+                    />
+                    <span>
+                      Saya mengisi data dengan benar dan memahami pengajuan custom ini berstatus <strong>Menunggu Konfirmasi WA</strong> (pengerjaan baru dimulai setelah harga akhir &amp; DP disepakati bersama Pak Nanang di WhatsApp).
+                    </span>
+                  </label>
+                  <Err e={errors.agreedToTerms} />
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
+          )}
         </div>
 
         {/* KOLOM KANAN: PRATINJAU REPLIKA DESKTOP + KOYO LIVE */}
@@ -1005,26 +1029,40 @@ export default function Custom() {
                 Gambar adalah ilustrasi pratinjau replika. Harga akhir, DP/sistem tabung, &amp; jadwal (±2 bulan) disepakati bersama Pak Nanang lewat WhatsApp.
               </p>
 
-              <div className="space-y-2 pt-1">
-                <button type="submit" disabled={submitting} className="btn-primary btn-shimmer w-full disabled:opacity-65">
-                  {submitting ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin text-gold-light" /> Mengirim rancangan...
-                    </>
-                  ) : (
-                    <>
-                      <MessageCircle size={18} /> Ajukan &amp; Kirim ke WhatsApp
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={askKoyoAboutDesign}
-                  className="btn-soft !min-h-[42px] w-full text-sm"
-                >
-                  <Sparkles size={15} className="text-gold" /> Diskusikan Desain Ini ke Koyo
-                </button>
-              </div>
+              {isOwner ? (
+                <div className="rounded-xl border border-gold/40 bg-espresso p-4 text-cream">
+                  <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gold-light">
+                    <Crown size={13} className="text-gold" /> Mode Pratinjau Owner
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-cream/80">
+                    Akun Owner hanya melihat pratinjau replika dan tidak dapat mengajukan pesanan.
+                  </p>
+                  <Link to="/admin" className="btn-gold mt-3 !min-h-[40px] w-full text-xs">
+                    Buka Dashboard Owner
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-2 pt-1">
+                  <button type="submit" disabled={submitting} className="btn-primary btn-shimmer w-full disabled:opacity-65">
+                    {submitting ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin text-gold-light" /> Mengirim rancangan...
+                      </>
+                    ) : (
+                      <>
+                        <MessageCircle size={18} /> Ajukan &amp; Kirim ke WhatsApp
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={askKoyoAboutDesign}
+                    className="btn-soft !min-h-[42px] w-full text-sm"
+                  >
+                    <Sparkles size={15} className="text-gold" /> Diskusikan Desain Ini ke Koyo
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </aside>
