@@ -38,7 +38,7 @@ export default function OrderModal({ product, onClose }) {
   const { addOrder, user } = useApp();
   const [submitting, setSubmitting] = useState(false);
   const [locating, setLocating] = useState(false);
-  const [coords, setCoords] = useState(null); // { latitude, longitude }
+  const [coords, setCoords] = useState(null);
 
   const { register, handleSubmit, control, formState: { errors } } = useForm({
     resolver: yupResolver(schema),

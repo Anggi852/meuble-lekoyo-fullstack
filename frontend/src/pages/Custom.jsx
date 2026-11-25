@@ -14,6 +14,7 @@ import {
   ImagePlus,
   Info,
   Loader2,
+  MapPin,
   MessageCircle,
   RotateCcw,
   Ruler,
@@ -160,7 +161,7 @@ function resolveInitialState(navState) {
 }
 
 export default function Custom() {
-  const { addOrder, openKoyoWith } = useApp();
+  const { addOrder, openKoyoWith, user } = useApp();
   const location = useLocation();
   const init = useMemo(() => resolveInitialState(location.state), [location.state]);
 
@@ -175,6 +176,8 @@ export default function Custom() {
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(true);
   const [photos, setPhotos] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [coords, setCoords] = useState(null);
 
   const t = TYPES[type] || TYPES.meja;
 
@@ -184,7 +187,15 @@ export default function Custom() {
     formState: { errors },
   } = useForm({
     resolver: yupResolver(schema),
-    defaultValues: { quantity: 1, payment: 'Tunai', needBy: '', note: '', phone: '', agreedToTerms: false },
+    defaultValues: {
+      name: user?.name || '',
+      quantity: 1,
+      payment: 'Tunai',
+      needBy: '',
+      note: '',
+      phone: '',
+      agreedToTerms: false,
+    },
   });
 
   const spec = useMemo(
@@ -262,6 +273,29 @@ export default function Custom() {
     );
   };
 
+  const handleGetLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error('Browser Anda tidak mendukung fitur lokasi GPS.');
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({
+          latitude: Number(pos.coords.latitude.toFixed(6)),
+          longitude: Number(pos.coords.longitude.toFixed(6)),
+        });
+        setLocating(false);
+        toast.success('Titik lokasi GPS berhasil ditandai.');
+      },
+      () => {
+        setLocating(false);
+        toast.error('Gagal mengambil lokasi. Pastikan izin lokasi browser diaktifkan.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  };
+
   const onSubmit = async (data) => {
     if (submitting) return;
     setSubmitting(true);
@@ -277,6 +311,9 @@ export default function Custom() {
         product: `Custom (${spec.categoryLabel}): ${spec.title} (${spec.size})`,
         productId: null,
         total: 0,
+        customerEmail: user?.email || '',
+        latitude: coords?.latitude ?? null,
+        longitude: coords?.longitude ?? null,
         custom: {
           ...spec,
           design: {
@@ -765,6 +802,11 @@ export default function Custom() {
                 <div>
                   <Label htmlFor="name">Nama lengkap</Label>
                   <input id="name" className="field" placeholder="Nama kamu" autoComplete="name" {...register('name')} />
+                  {user?.email && (
+                    <p className="mt-1 text-xs text-muted">
+                      Terhubung ke akun <strong className="text-espresso">{user.email}</strong> (otomatis masuk ke Pesanan Saya).
+                    </p>
+                  )}
                   <Err e={errors.name} />
                 </div>
                 <div>
@@ -775,7 +817,20 @@ export default function Custom() {
               </div>
 
               <div>
-                <Label htmlFor="address">Kota &amp; alamat pengiriman</Label>
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <label htmlFor="address" className="text-[15px] font-medium text-bark">
+                    Kota &amp; alamat pengiriman
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGetLocation}
+                    disabled={locating || submitting}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gold/40 bg-sand px-2.5 py-1 text-xs font-semibold text-teak transition hover:bg-gold/20 disabled:opacity-60"
+                  >
+                    {locating ? <Loader2 size={13} className="animate-spin" /> : <MapPin size={13} />}
+                    {locating ? 'Mencari GPS...' : coords ? 'Perbarui GPS' : 'Tandai Lokasi GPS'}
+                  </button>
+                </div>
                 <textarea
                   id="address"
                   rows={2}
@@ -783,6 +838,26 @@ export default function Custom() {
                   placeholder="Contoh: Jl. Sudirman No. 12, Palembang"
                   {...register('address')}
                 />
+                {coords && (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-sage/30 bg-sage/10 px-3 py-1.5 text-xs text-espresso">
+                    <a
+                      href={`https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 font-semibold text-teak underline"
+                    >
+                      <MapPin size={13} /> Titik GPS tersimpan ({coords.latitude}, {coords.longitude})
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setCoords(null)}
+                      aria-label="Hapus titik GPS"
+                      className="rounded p-0.5 text-muted hover:text-red-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
                 <Err e={errors.address} />
               </div>
 
