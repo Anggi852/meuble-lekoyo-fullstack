@@ -41,20 +41,22 @@ export function createApp() {
     res.json({
       service: "Meuble Le'Koyo Backend API",
       version: '1.0.0',
-      docs: '/api-docs',
+      ...(env.nodeEnv !== 'production' ? { docs: '/api-docs' } : {}),
       health: '/api/v1/health',
     });
   });
 
-  // Dokumentasi interaktif Swagger / OpenAPI
-  app.get('/api-docs.json', (_req, res) => res.json(openApiSpec));
-  app.use(
-    '/api-docs',
-    swaggerUi.serve,
-    swaggerUi.setup(openApiSpec, {
-      customSiteTitle: "Swagger API — Meuble Le'Koyo",
-    }),
-  );
+  // Dokumentasi interaktif Swagger / OpenAPI (hanya aktif di lokal / development)
+  if (env.nodeEnv !== 'production') {
+    app.get('/api-docs.json', (_req, res) => res.json(openApiSpec));
+    app.use(
+      '/api-docs',
+      swaggerUi.serve,
+      swaggerUi.setup(openApiSpec, {
+        customSiteTitle: "Swagger API — Meuble Le'Koyo",
+      }),
+    );
+  }
 
   // REST API v1
   app.use('/api/v1', apiV1Routes);

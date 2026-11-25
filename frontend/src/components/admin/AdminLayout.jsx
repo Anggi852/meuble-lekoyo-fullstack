@@ -125,14 +125,6 @@ export default function AdminLayout() {
 
         <div className="mt-5 space-y-1.5 border-t border-white/10 pt-4">
           <a
-            href={SWAGGER_DOCS_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-cream/80 transition hover:bg-white/10 hover:text-gold-light"
-          >
-            <ExternalLink size={17} className="text-gold-light/80" /> Swagger API Docs
-          </a>
-          <a
             href="/"
             target="_blank"
             rel="noreferrer"
