@@ -467,6 +467,18 @@ export function AppProvider({ children }) {
     }
   };
 
+  const submitOrderReview = async (payload) => {
+    try {
+      const saved = await api.submitOrderReview(payload);
+      setTestimonials((l) => upsert(l, saved));
+      if (user?.email) loadMyActivities();
+      return saved;
+    } catch (err) {
+      toast.error(extractApiError(err, 'Gagal mengirim ulasan.'));
+      throw err;
+    }
+  };
+  
   /* -------------------- PESANAN & PENJUALAN -------------------- */
   const addOrder = async (order) => {
     try {

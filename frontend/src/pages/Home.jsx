@@ -337,37 +337,65 @@ export default function Home() {
           <p className="mt-2 text-muted">Pengalaman nyata pembeli furnitur jati Meuble Le'Koyo dari berbagai kota.</p>
         </div>
         <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {testimonials.map((t, i) => (
-            <Reveal key={t.id} delay={(i % 3) * 0.08}>
-              <figure className="card-alive relative flex h-full flex-col p-6">
-                <Quote size={36} className="pointer-events-none absolute right-5 top-5 text-gold/25" />
-                <div className="flex gap-1 text-gold">
-                  {[...Array(5)].map((_, k) => (
-                    <Star key={k} size={16} fill="currentColor" />
-                  ))}
-                </div>
-                <blockquote className="relative mt-4 flex-1 text-[16px] leading-relaxed text-bark">
-                  "{t.text}"
-                </blockquote>
-                <figcaption className="mt-5 flex items-center justify-between gap-3 border-t border-line/70 pt-4">
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-11 w-11 place-items-center rounded-full border border-gold/35 bg-gradient-to-br from-sand to-cream font-heading text-lg font-bold text-espresso">
-                      {t.name.split(' ').pop()[0]}
-                    </span>
-                    <div>
-                      <span className="block font-semibold text-espresso">{t.name}</span>
-                      <span className="flex items-center gap-1 text-xs font-medium text-muted">
-                        <MapPin size={12} className="text-gold-dark" /> {t.city}
-                      </span>
+          {testimonials
+            .filter((t) => t.showOnHome !== false)
+            .map((t, i) => {
+              const stars = Math.min(5, Math.max(1, Number(t.rating) || 5));
+              return (
+                <Reveal key={t.id} delay={(i % 3) * 0.08}>
+                  <figure className="card-alive relative flex h-full flex-col p-6">
+                    <Quote size={36} className="pointer-events-none absolute right-5 top-5 text-gold/25" />
+                    <div className="flex gap-1 text-gold">
+                      {[...Array(5)].map((_, k) => (
+                        <Star
+                          key={k}
+                          size={16}
+                          fill={k < stars ? 'currentColor' : 'none'}
+                          className={k < stars ? 'text-gold' : 'text-line'}
+                        />
+                      ))}
                     </div>
-                  </div>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-sage/25 bg-sage/10 px-2.5 py-1 text-[11px] font-semibold text-sage">
-                    <CheckCircle2 size={12} /> Terverifikasi
-                  </span>
-                </figcaption>
-              </figure>
-            </Reveal>
-          ))}
+
+                    {t.productName && (
+                      <div className="mt-3">
+                        {t.productId ? (
+                          <Link
+                            to={`/product/${t.productId}`}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-gold/35 bg-sand/70 px-3 py-1 text-xs font-semibold text-teak transition hover:border-teak hover:bg-sand"
+                          >
+                            <Package size={12} /> {t.productName}
+                          </Link>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/35 bg-sand/70 px-3 py-1 text-xs font-semibold text-teak">
+                            <Package size={12} /> {t.productName}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <blockquote className="relative mt-3.5 flex-1 text-[16px] leading-relaxed text-bark">
+                      "{t.text}"
+                    </blockquote>
+                    <figcaption className="mt-5 flex items-center justify-between gap-3 border-t border-line/70 pt-4">
+                      <div className="flex items-center gap-3">
+                        <span className="grid h-11 w-11 place-items-center rounded-full border border-gold/35 bg-gradient-to-br from-sand to-cream font-heading text-lg font-bold text-espresso">
+                          {t.name.split(' ').pop()[0]}
+                        </span>
+                        <div>
+                          <span className="block font-semibold text-espresso">{t.name}</span>
+                          <span className="flex items-center gap-1 text-xs font-medium text-muted">
+                            <MapPin size={12} className="text-gold-dark" /> {t.city}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-sage/25 bg-sage/10 px-2.5 py-1 text-[11px] font-semibold text-sage">
+                        <CheckCircle2 size={12} /> {t.source === 'customer' ? 'Pembeli Asli' : 'Terverifikasi'}
+                      </span>
+                    </figcaption>
+                  </figure>
+                </Reveal>
+              );
+            })}
         </div>
       </section>
 

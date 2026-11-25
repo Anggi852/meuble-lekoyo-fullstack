@@ -38,8 +38,14 @@ CREATE TABLE IF NOT EXISTS user_activities (
 );
 CREATE INDEX IF NOT EXISTS idx_user_activities_email_time ON user_activities (user_email, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_activities_action ON user_activities (action);
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS rating INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS product_id BIGINT;
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS product_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS order_id BIGINT;
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS user_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'owner';
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS show_on_home BOOLEAN NOT NULL DEFAULT TRUE;
 `;
-
 function normalizeImages(item) {
   const raw = Array.isArray(item.images) && item.images.length > 0
     ? item.images
@@ -52,6 +58,33 @@ function normalizeImages(item) {
   return {
     images: clean,
     image: clean[0]?.url || item.image || '',
+  };
+}
+
+function normalizeTestimonial(r) {
+  const rawPid = r.productId ?? r.product_id;
+  const rawOid = r.orderId ?? r.order_id;
+  return {
+    id: Number(r.id),
+    name: r.name || '',
+    city: r.city || '',
+    text: r.text || '',
+    rating: Math.min(5, Math.max(1, Number(r.rating) || 5)),
+    productId: rawPid === null || rawPid === undefined || rawPid === '' ? null : Number(rawPid),
+    productName: r.productName ?? r.product_name ?? '',
+    orderId: rawOid === null || rawOid === undefined || rawOid === '' ? null : Number(rawOid),
+    userEmail: r.userEmail ?? r.user_email ?? '',
+    source: r.source || 'owner',
+    showOnHome:
+      r.showOnHome !== undefined
+        ? Boolean(r.showOnHome)
+        : r.show_on_home !== undefined
+          ? Boolean(r.show_on_home)
+          : true,
+    createdAt:
+      r.createdAt ||
+      (r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at) ||
+      new Date().toISOString(),
   };
 }
 
@@ -191,6 +224,9 @@ function createJsonDriver() {
     },
 
     async getOrders() { return state.orders; },
+    async getOrderById(id) {
+      return state.orders.find((o) => o.id === Number(id)) || null;
+    },
     async getOrdersByEmail(email) {
       const target = String(email || '').trim().toLowerCase();
       return state.orders.filter((o) => String(o.customerEmail || '').toLowerCase() === target);
@@ -287,9 +323,19 @@ function createJsonDriver() {
       return true;
     },
 
-    async getTestimonials() { return state.testimonials; },
+  async getTestimonials() {
+      return state.testimonials.map(normalizeTestimonial);
+    },
+    async getTestimonialByOrderId(orderId) {
+      const found = state.testimonials.find((t) => Number(t.orderId) === Number(orderId));
+      return found ? normalizeTestimonial(found) : null;
+    },
     async createTestimonial(data) {
-      const item = { id: Date.now(), ...data };
+      const item = normalizeTestimonial({
+        id: Date.now(),
+        createdAt: new Date().toISOString(),
+        ...data,
+      });
       state.testimonials = [item, ...state.testimonials];
       persist();
       return item;
@@ -298,7 +344,7 @@ function createJsonDriver() {
       const numId = Number(id);
       const idx = state.testimonials.findIndex((t) => t.id === numId);
       if (idx === -1) return null;
-      state.testimonials[idx] = { ...state.testimonials[idx], ...data, id: numId };
+      state.testimonials[idx] = normalizeTestimonial({ ...state.testimonials[idx], ...data, id: numId });
       persist();
       return state.testimonials[idx];
     },
@@ -738,24 +784,68 @@ function createPostgresDriver(connectionString) {
       return res.rowCount > 0;
     },
 
+    async getOrderById(id) {
+      const { rows } = await pool.query('SELECT * FROM orders WHERE id = $1', [Number(id)]);
+      return rows[0] ? mapOrder(rows[0]) : null;
+    },
+
     async getTestimonials() {
       const { rows } = await pool.query('SELECT * FROM testimonials ORDER BY id DESC');
-      return rows.map((r) => ({ id: Number(r.id), name: r.name, city: r.city, text: r.text }));
+      return rows.map(normalizeTestimonial);
+    },
+    async getTestimonialByOrderId(orderId) {
+      const { rows } = await pool.query(
+        'SELECT * FROM testimonials WHERE order_id = $1 LIMIT 1',
+        [Number(orderId)],
+      );
+      return rows[0] ? normalizeTestimonial(rows[0]) : null;
     },
     async createTestimonial(data) {
       const id = Date.now();
+      const item = normalizeTestimonial({ id, ...data });
       const { rows } = await pool.query(
-        `INSERT INTO testimonials (id, name, city, text) VALUES ($1,$2,$3,$4) RETURNING *`,
-        [id, data.name, data.city, data.text],
+        `INSERT INTO testimonials (
+           id, name, city, text, rating, product_id, product_name,
+           order_id, user_email, source, show_on_home
+         )
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         RETURNING *`,
+        [
+          id,
+          item.name,
+          item.city,
+          item.text,
+          item.rating,
+          item.productId,
+          item.productName,
+          item.orderId,
+          item.userEmail,
+          item.source,
+          item.showOnHome,
+        ],
       );
-      return { id: Number(rows[0].id), name: rows[0].name, city: rows[0].city, text: rows[0].text };
+      return normalizeTestimonial(rows[0]);
     },
     async updateTestimonial(id, data) {
+      const { rows: cur } = await pool.query('SELECT * FROM testimonials WHERE id = $1', [Number(id)]);
+      if (!cur[0]) return null;
+      const merged = normalizeTestimonial({ ...normalizeTestimonial(cur[0]), ...data, id: Number(id) });
       const { rows } = await pool.query(
-        `UPDATE testimonials SET name=$2, city=$3, text=$4 WHERE id=$1 RETURNING *`,
-        [Number(id), data.name, data.city, data.text],
+        `UPDATE testimonials
+         SET name=$2, city=$3, text=$4, rating=$5, product_id=$6, product_name=$7, show_on_home=$8
+         WHERE id=$1 RETURNING *`,
+        [
+          Number(id),
+          merged.name,
+          merged.city,
+          merged.text,
+          merged.rating,
+          merged.productId,
+          merged.productName,
+          merged.showOnHome,
+        ],
       );
-      return rows[0] ? { id: Number(rows[0].id), name: rows[0].name, city: rows[0].city, text: rows[0].text } : null;
+      return rows[0] ? normalizeTestimonial(rows[0]) : null;
     },
     async deleteTestimonial(id) {
       const res = await pool.query('DELETE FROM testimonials WHERE id = $1', [Number(id)]);

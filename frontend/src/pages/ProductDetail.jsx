@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Calendar,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -17,6 +18,7 @@ import {
   Ruler,
   ShieldCheck,
   Sparkles,
+  Star,
   Truck,
   Wallet,
   Wrench,
@@ -41,7 +43,16 @@ function normalizeCat(cat) {
 export default function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { products, customPortfolio, wishlist, toggleWishlist, trackView, soldOf, openKoyoWith } = useApp();
+  const {
+    products,
+    customPortfolio,
+    testimonials,
+    wishlist,
+    toggleWishlist,
+    trackView,
+    soldOf,
+    openKoyoWith,
+  } = useApp();
 
   const isCustomItem = String(id || '').startsWith('custom-');
   const numericId = parseInt(String(id || '').replace(/^custom-/, ''), 10);
@@ -89,6 +100,17 @@ export default function ProductDetail() {
   const liked = !isCustomItem && wishlist.some((i) => i.id === product.id);
   const sold = !isCustomItem ? soldOf(product.id).total : 0;
   const isSold = !isCustomItem && product.stockStatus === 'Terjual';
+
+  const productReviews = !isCustomItem
+    ? (testimonials || []).filter((t) => Number(t.productId) === Number(product.id))
+    : [];
+  const avgRating =
+    productReviews.length > 0
+      ? (
+          productReviews.reduce((sum, r) => sum + (Number(r.rating) || 5), 0) /
+          productReviews.length
+        ).toFixed(1)
+      : null;
 
   const currentNormCat = normalizeCat(activeItem.category);
   const relatedProducts = products
@@ -277,6 +299,11 @@ export default function ProductDetail() {
                 {sold > 0 && (
                   <span className="rounded-full bg-sand px-3 py-1 text-sm font-semibold text-teak">Sudah terjual {sold}×</span>
                 )}
+                {avgRating && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-gold/15 px-3 py-1 text-sm font-semibold text-teak">
+                    <Star size={14} fill="currentColor" className="text-gold" /> {avgRating} ({productReviews.length} ulasan)
+                  </span>
+                )}
               </div>
               {isSold && (
                 <p className="mt-3 text-[15px] text-muted">
@@ -351,6 +378,70 @@ export default function ProductDetail() {
           )}
         </div>
       </div>
+
+      {/* ULASAN PEMBELI KHUSUS PRODUK INI */}
+      {!isCustomItem && (
+        <section className="mt-14">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <span className="kicker">
+                <Star size={12} className="text-gold-dark" /> Ulasan Produk
+              </span>
+              <h2 className="font-heading mt-1 text-2xl font-bold text-espresso">
+                Ulasan pembeli ({productReviews.length})
+              </h2>
+            </div>
+            {avgRating && (
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-gold/35 bg-sand/70 px-4 py-2">
+                <Star size={18} fill="currentColor" className="text-gold" />
+                <span className="font-heading text-lg font-bold text-espresso">{avgRating}</span>
+                <span className="text-xs text-muted">/ 5.0</span>
+              </div>
+            )}
+          </div>
+
+          {productReviews.length === 0 ? (
+            <div className="mt-5 rounded-2xl border border-line bg-cream/70 p-6 text-sm text-muted">
+              Belum ada ulasan khusus untuk produk ini. Pelanggan yang pesanannya berstatus <strong>Selesai</strong> dapat langsung menulis ulasan melalui halaman{' '}
+              <Link to="/my-orders" className="font-semibold text-teak underline">
+                Pesanan Saya
+              </Link>.
+            </div>
+          ) : (
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              {productReviews.map((rev) => {
+                const stars = Math.min(5, Math.max(1, Number(rev.rating) || 5));
+                return (
+                  <article key={rev.id} className="rounded-2xl border border-gold/25 bg-white p-5 shadow-soft">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-espresso">{rev.name}</p>
+                        <p className="flex items-center gap-1 text-xs text-muted">
+                          <MapPin size={11} className="text-gold-dark" /> {rev.city}
+                        </p>
+                      </div>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-sage/10 px-2.5 py-0.5 text-[11px] font-semibold text-sage">
+                        <CheckCircle2 size={11} /> {rev.source === 'customer' ? 'Pembeli Asli' : 'Terverifikasi'}
+                      </span>
+                    </div>
+                    <div className="mt-2.5 flex gap-0.5 text-gold">
+                      {[...Array(5)].map((_, k) => (
+                        <Star
+                          key={k}
+                          size={14}
+                          fill={k < stars ? 'currentColor' : 'none'}
+                          className={k < stars ? 'text-gold' : 'text-line'}
+                        />
+                      ))}
+                    </div>
+                    <p className="mt-2.5 text-[15px] leading-relaxed text-bark">"{rev.text}"</p>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* YANG PERNAH DICUSTOM DI JENIS YANG SAMA */}
       {relatedCustom.length > 0 && (

@@ -92,3 +92,12 @@ CREATE TABLE IF NOT EXISTS metrics (
 
 -- Migrasi aman jika tabel orders sudah pernah dibuat di versi sebelumnya
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT '';
+
+-- Migrasi aman untuk rating, produk terkait, & ulasan pembeli terverifikasi
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS rating INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS product_id BIGINT;
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS product_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS order_id BIGINT;
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS user_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'owner';
+ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS show_on_home BOOLEAN NOT NULL DEFAULT TRUE;

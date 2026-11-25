@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
+import { AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
   ClipboardList,
@@ -12,7 +13,9 @@ import {
   XCircle,
   Sparkles,
   ArrowRight,
+  Star,
 } from 'lucide-react';
+import Modal from '../components/Modal';
 import { useApp } from '../context/AppContext';
 import { extractApiError } from '../services/api';
 import { WA_BASE } from '../services/whatsapp';
@@ -34,8 +37,13 @@ const STATUS_STYLE = {
 };
 
 export default function MyOrders() {
-  const { user, myOrders, loadMyOrders, loginWithGoogle } = useApp();
+  const { user, myOrders, loadMyOrders, loginWithGoogle, testimonials, submitOrderReview } = useApp();
   const [refreshing, setRefreshing] = useState(false);
+  const [reviewOrder, setReviewOrder] = useState(null);
+  const [rating, setRating] = useState(5);
+  const [city, setCity] = useState('');
+  const [reviewText, setReviewText] = useState('');
+  const [sendingReview, setSendingReview] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -56,6 +64,35 @@ export default function MyOrders() {
       toast.success('Berhasil masuk dengan Google.');
     } catch (err) {
       toast.error(extractApiError(err, 'Gagal masuk dengan Google.'));
+    }
+  };
+
+  const openReviewModal = (order) => {
+    const guessedCity = String(order.address || '').split(',').pop().trim().slice(0, 50);
+    setReviewOrder(order);
+    setRating(5);
+    setCity(guessedCity || 'Jambi');
+    setReviewText('');
+  };
+
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
+    if (reviewText.trim().length < 5) {
+      toast.error('Tuliskan ulasan minimal 5 karakter.');
+      return;
+    }
+    setSendingReview(true);
+    try {
+      await submitOrderReview({
+        orderId: reviewOrder.id,
+        rating,
+        city: city.trim(),
+        text: reviewText.trim(),
+      });
+      toast.success('Terima kasih! Ulasan Anda sudah tampil.');
+      setReviewOrder(null);
+    } finally {
+      setSendingReview(false);
     }
   };
 
@@ -158,6 +195,7 @@ export default function MyOrders() {
             const estPrice = Number(order.estimatedPrice ?? order.total) || 0;
             const isDone = order.status === 'Selesai';
             const isCancelled = order.status === 'Dibatalkan';
+            const existingReview = testimonials.find((t) => Number(t.orderId) === Number(order.id));
 
             return (
               <article
@@ -254,7 +292,37 @@ export default function MyOrders() {
                   )}
                 </div>
 
+                {existingReview && (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800">
+                        <CheckCircle2 size={14} /> Ulasan Anda Terkirim
+                      </span>
+                      <span className="flex gap-0.5 text-gold">
+                        {[...Array(5)].map((_, k) => (
+                          <Star
+                            key={k}
+                            size={13}
+                            fill={k < existingReview.rating ? 'currentColor' : 'none'}
+                            className={k < existingReview.rating ? 'text-gold' : 'text-line'}
+                          />
+                        ))}
+                      </span>
+                    </div>
+                    <p className="mt-1 italic text-bark">"{existingReview.text}"</p>
+                  </div>
+                )}
+
                 <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-line pt-4">
+                  {isDone && !existingReview && (
+                    <button
+                      type="button"
+                      onClick={() => openReviewModal(order)}
+                      className="btn-soft !min-h-[40px] !px-4 text-xs sm:text-sm"
+                    >
+                      <Star size={15} className="text-gold-dark" /> Beri Ulasan
+                    </button>
+                  )}
                   <a
                     href={buildWaLink(order)}
                     target="_blank"
@@ -269,6 +337,78 @@ export default function MyOrders() {
           })}
         </div>
       )}
+
+      <AnimatePresence>
+        {reviewOrder && (
+          <Modal title="Beri Ulasan Pesanan" onClose={() => setReviewOrder(null)}>
+            <div className="rounded-xl bg-cream p-3.5 text-sm">
+              <p className="text-xs font-bold uppercase tracking-wider text-gold-dark">
+                {reviewOrder.orderCode || `#${reviewOrder.id}`}
+              </p>
+              <p className="mt-0.5 font-semibold text-espresso">{reviewOrder.product}</p>
+            </div>
+
+            <form onSubmit={handleSubmitReview} className="mt-4 space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-bark">
+                  Seberapa puas Anda dengan hasilnya?
+                </label>
+                <div className="flex items-center gap-1.5">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setRating(n)}
+                      className="rounded-lg p-1.5 transition hover:bg-sand"
+                      aria-label={`${n} bintang`}
+                    >
+                      <Star
+                        size={26}
+                        fill={n <= rating ? '#C9A227' : 'none'}
+                        className={n <= rating ? 'text-gold' : 'text-line'}
+                      />
+                    </button>
+                  ))}
+                  <span className="ml-2 text-sm font-bold text-teak">{rating} / 5</span>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="rev-city" className="mb-1.5 block text-sm font-medium text-bark">
+                  Kota Anda
+                </label>
+                <input
+                  id="rev-city"
+                  className="field"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="Contoh: Kota Jambi / Palembang"
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="rev-text" className="mb-1.5 block text-sm font-medium text-bark">
+                  Ceritakan pengalaman Anda
+                </label>
+                <textarea
+                  id="rev-text"
+                  rows={3}
+                  className="field"
+                  value={reviewText}
+                  onChange={(e) => setReviewText(e.target.value)}
+                  placeholder="Contoh: Kayu jatinya tebal, ukiran rapi, pengiriman ke Palembang aman tanpa lecet..."
+                  required
+                />
+              </div>
+
+              <button type="submit" disabled={sendingReview} className="btn-primary w-full">
+                {sendingReview ? 'Mengirim ulasan...' : 'Kirim Ulasan'}
+              </button>
+            </form>
+          </Modal>
+        )}
+      </AnimatePresence>
     </section>
   );
 }

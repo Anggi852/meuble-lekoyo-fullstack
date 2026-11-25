@@ -506,30 +506,162 @@ router.delete(
   }),
 );
 
-/* -------------------- TESTIMONIALS -------------------- */
+/* -------------------- TESTIMONIALS & PRODUCT REVIEWS -------------------- */
 router.get(
   '/testimonials',
-  asyncHandler(async (_req, res) => {
-    res.json({ success: true, data: await db.getTestimonials() });
+  asyncHandler(async (req, res) => {
+    let list = await db.getTestimonials();
+    if (req.query.productId) {
+      list = list.filter((t) => Number(t.productId) === Number(req.query.productId));
+    }
+    if (req.query.home === 'true') {
+      list = list.filter((t) => t.showOnHome !== false);
+    }
+    res.json({ success: true, data: list });
   }),
 );
 
 router.post(
   '/testimonials',
   requireAdmin,
-  validate(testimonialSchema),
   asyncHandler(async (req, res) => {
-    const created = await db.createTestimonial(req.body);
-    res.status(201).json({ success: true, message: 'Testimoni ditambahkan.', data: created });
+    const name = String(req.body?.name || '').trim();
+    const city = String(req.body?.city || '').trim();
+    const text = String(req.body?.text || '').trim();
+    if (name.length < 2 || city.length < 2 || text.length < 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nama, kota asal, dan isi testimoni wajib diisi dengan lengkap.',
+      });
+    }
+    const rawPid = req.body?.productId;
+    const productId = rawPid !== null && rawPid !== undefined && rawPid !== '' ? Number(rawPid) : null;
+    let productName = String(req.body?.productName || '').trim();
+    if (productId && !productName) {
+      const prod = await db.getProductById(productId);
+      if (prod) productName = prod.name;
+    }
+    const rating = Math.min(5, Math.max(1, Number(req.body?.rating) || 5));
+    const showOnHome = req.body?.showOnHome === undefined ? true : Boolean(req.body.showOnHome);
+
+    const created = await db.createTestimonial({
+      name,
+      city,
+      text,
+      rating,
+      productId,
+      productName,
+      source: 'owner',
+      showOnHome,
+    });
+    return res.status(201).json({ success: true, message: 'Testimoni ditambahkan.', data: created });
+  }),
+);
+
+// Endpoint khusus pelanggan memberi ulasan untuk pesanan berstatus "Selesai"
+router.post(
+  '/testimonials/review',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const orderId = Number(req.body?.orderId);
+    const rating = Math.min(5, Math.max(1, Math.round(Number(req.body?.rating) || 5)));
+    const text = String(req.body?.text || '').trim();
+    const cityInput = String(req.body?.city || '').trim();
+
+    if (!Number.isFinite(orderId) || orderId <= 0) {
+      return res.status(400).json({ success: false, message: 'ID pesanan tidak valid.' });
+    }
+    if (text.length < 5 || text.length > 600) {
+      return res.status(400).json({
+        success: false,
+        message: 'Isi ulasan minimal 5 karakter dan maksimal 600 karakter.',
+      });
+    }
+
+    const order = await db.getOrderById(orderId);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
+    }
+    if (String(order.customerEmail || '').toLowerCase() !== String(req.user.email || '').toLowerCase()) {
+      return res.status(403).json({ success: false, message: 'Anda tidak berhak mengulas pesanan ini.' });
+    }
+    if (order.status !== 'Selesai') {
+      return res.status(400).json({
+        success: false,
+        message: 'Ulasan hanya dapat diberikan untuk pesanan yang sudah berstatus Selesai.',
+      });
+    }
+
+    const existing = await db.getTestimonialByOrderId(order.id);
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: 'Anda sudah memberikan ulasan untuk pesanan ini.',
+      });
+    }
+
+    const city =
+      cityInput ||
+      String(order.address || '')
+        .split(',')
+        .pop()
+        .trim()
+        .slice(0, 60) ||
+      'Jambi';
+
+    const created = await db.createTestimonial({
+      name: order.name || req.user.name || 'Pelanggan',
+      city,
+      text,
+      rating,
+      productId: order.productId ?? null,
+      productName: order.product || '',
+      orderId: order.id,
+      userEmail: req.user.email,
+      source: 'customer',
+      showOnHome: true,
+    });
+
+    await logActivitySafe({
+      userEmail: req.user.email,
+      userName: req.user.name,
+      action: 'review_create',
+      targetType: order.productId ? 'product' : 'order',
+      targetId: String(order.productId || order.orderCode || order.id),
+      label: `Memberi ulasan bintang ${rating} untuk ${order.product}`,
+      metadata: {
+        orderId: order.id,
+        orderCode: order.orderCode,
+        productId: order.productId ?? null,
+        rating,
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Terima kasih! Ulasan Anda berhasil dikirim.',
+      data: created,
+    });
   }),
 );
 
 router.put(
   '/testimonials/:id',
   requireAdmin,
-  validate(testimonialSchema),
   asyncHandler(async (req, res) => {
-    const updated = await db.updateTestimonial(req.params.id, req.body);
+    const patch = {};
+    if (req.body?.name !== undefined) patch.name = String(req.body.name).trim();
+    if (req.body?.city !== undefined) patch.city = String(req.body.city).trim();
+    if (req.body?.text !== undefined) patch.text = String(req.body.text).trim();
+    if (req.body?.rating !== undefined) patch.rating = Math.min(5, Math.max(1, Number(req.body.rating) || 5));
+    if (req.body?.productId !== undefined) {
+      const rawPid = req.body.productId;
+      patch.productId = rawPid !== null && rawPid !== '' ? Number(rawPid) : null;
+    }
+    if (req.body?.productName !== undefined) patch.productName = String(req.body.productName).trim();
+    if (req.body?.showOnHome !== undefined) patch.showOnHome = Boolean(req.body.showOnHome);
+
+    const updated = await db.updateTestimonial(req.params.id, patch);
     if (!updated) return res.status(404).json({ success: false, message: 'Testimoni tidak ditemukan.' });
     return res.json({ success: true, message: 'Testimoni diperbarui.', data: updated });
   }),
