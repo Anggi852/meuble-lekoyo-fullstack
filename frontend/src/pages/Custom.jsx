@@ -39,6 +39,38 @@ import {
   minDate,
 } from '../data/custom';
 
+// Kompres gambar referensi di browser agar ringan disimpan ke database Neon
+function compressImageToDataUrl(file, maxDim = 960, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Gagal membaca file gambar.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Format gambar tidak didukung.'));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width >= height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 const Label = ({ htmlFor, children }) => (
   <label htmlFor={htmlFor} className="mb-1.5 block text-[15px] font-medium text-bark">
     {children}
@@ -191,24 +223,35 @@ export default function Custom() {
     setView('front');
   };
 
-  const onPhotos = (e) => {
+  const onPhotos = async (e) => {
     const files = Array.from(e.target.files || []);
+    e.target.value = '';
     if (!files.length) return;
     const remaining = 3 - photos.length;
     if (remaining <= 0) {
       toast.error('Maksimal 3 foto referensi.');
       return;
     }
+
     const valid = [];
-    files.slice(0, remaining).forEach((f) => {
+    for (const f of files.slice(0, remaining)) {
       if (!f.type.startsWith('image/') || f.size > 8 * 1024 * 1024) {
         toast.error(`File "${f.name}" harus berupa gambar maksimal 8 MB`);
-      } else {
-        valid.push({ id: `${Date.now()}-${Math.random()}`, url: URL.createObjectURL(f), name: f.name });
+        continue;
       }
-    });
+      try {
+        const dataUrl = await compressImageToDataUrl(f);
+        valid.push({
+          id: `${Date.now()}-${Math.random()}`,
+          url: dataUrl,
+          dataUrl,
+          name: f.name,
+        });
+      } catch {
+        toast.error(`Gagal memproses gambar "${f.name}".`);
+      }
+    }
     if (valid.length) setPhotos((prev) => [...prev, ...valid]);
-    e.target.value = '';
   };
 
   const removePhoto = (id) => setPhotos((prev) => prev.filter((p) => p.id !== id));
@@ -236,6 +279,17 @@ export default function Custom() {
         total: 0,
         custom: {
           ...spec,
+          design: {
+            type,
+            dims,
+            opts,
+            finish,
+            sheen,
+          },
+          referencePhotos: photos.map((p) => ({
+            name: p.name,
+            dataUrl: p.dataUrl,
+          })),
           needBy: data.needBy,
           note: data.note,
           hasPhoto: photos.length > 0,
@@ -249,7 +303,7 @@ export default function Custom() {
         }),
         '_blank',
       );
-      toast.success('Pengajuan custom tercatat (Menunggu Konfirmasi WA)! Membuka WhatsApp Pak Nanang...');
+      toast.success('Pengajuan custom & foto referensi tersimpan! Membuka WhatsApp Pak Nanang...');
     } catch {
       // Error validasi/anti-spam sudah ditampilkan
     } finally {
@@ -360,7 +414,7 @@ export default function Custom() {
 
         {/* KOLOM KIRI: 4 LANGKAH SIMPEL */}
         <div className="space-y-8">
-          {/* LANGKAH 1: PILIH JENIS (DIPISAH PER KELOMPOK JENIS) */}
+          {/* LANGKAH 1: PILIH JENIS */}
           <section>
             <StepHeader
               n={1}
@@ -693,7 +747,7 @@ export default function Custom() {
 
                 <p className="mt-2 flex gap-1.5 text-xs text-muted">
                   <Info size={15} className="mt-0.5 shrink-0 text-teak" />
-                  Setelah WhatsApp terbuka, kirim langsung foto referensinya di chat ke Pak Nanang.
+                  Foto referensi &amp; pratinjau ukuran otomatis tersimpan ke Dashboard Pak Nanang saat diajukan.
                 </p>
               </div>
             </div>

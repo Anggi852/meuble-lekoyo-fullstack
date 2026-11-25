@@ -10,10 +10,15 @@ import {
   Tag,
   CheckCircle2,
   Mail,
+  User,
+  Image as ImageIcon,
+  ZoomIn,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useApp } from '../../context/AppContext';
 import { PageHeader, RowActions, confirmDelete } from '../../components/admin/ui';
+import FurniturePreview from '../../components/FurniturePreview';
 import { formatRupiah } from '../../utils/format';
 import { customKey } from '../../utils/sales';
 import { buildCustomerWhatsAppReplyLink } from '../../utils/phone';
@@ -37,6 +42,105 @@ const tone = {
   Selesai: 'bg-green-100 text-green-800',
   Dibatalkan: 'bg-red-50 text-red-700',
 };
+
+function CustomDesignPanel({ custom, onOpenPhoto }) {
+  const [view, setView] = useState('front');
+  const [showScale, setShowScale] = useState(true);
+
+  const design = custom?.design;
+  const photos = Array.isArray(custom?.referencePhotos) ? custom.referencePhotos : [];
+  if (!design && photos.length === 0) return null;
+
+  const secondViewLabel = design?.type === 'lemari' ? 'Tata Dalam' : 'Tampak Samping';
+
+  return (
+    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+      {design?.type && design?.dims && (
+        <div className="overflow-hidden rounded-xl border border-gold/35 bg-white shadow-sm">
+          <div className="luxury-dark flex items-center justify-between gap-2 px-3 py-2">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setView('front')}
+                className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                  view === 'front' ? 'bg-gold text-espresso' : 'text-cream/75 hover:bg-white/10'
+                }`}
+              >
+                Tampak Depan
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('side')}
+                className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                  view === 'side' ? 'bg-gold text-espresso' : 'text-cream/75 hover:bg-white/10'
+                }`}
+              >
+                {secondViewLabel}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowScale((v) => !v)}
+              className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold ${
+                showScale
+                  ? 'border-gold/50 bg-gold/20 text-gold-light'
+                  : 'border-white/20 text-cream/70'
+              }`}
+            >
+              <User size={11} /> 170cm
+            </button>
+          </div>
+          <div className="mx-auto max-w-[360px]">
+            <FurniturePreview
+              type={design.type}
+              dims={design.dims}
+              opts={design.opts || {}}
+              finish={design.finish || 'natural'}
+              sheen={design.sheen || 'doff'}
+              view={view}
+              showScale={showScale}
+            />
+          </div>
+        </div>
+      )}
+
+      {photos.length > 0 && (
+        <div className="rounded-xl border border-gold/30 bg-white p-3.5 shadow-sm">
+          <p className="mb-2.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gold-dark">
+            <ImageIcon size={14} /> Foto / Sketsa Referensi Pelanggan ({photos.length})
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {photos.map((ph, idx) => {
+              const src = ph?.dataUrl || ph?.url || ph;
+              const name = ph?.name || `Referensi ${idx + 1}`;
+              return (
+                <button
+                  key={`${name}-${idx}`}
+                  type="button"
+                  onClick={() => onOpenPhoto({ src, name })}
+                  className="group relative overflow-hidden rounded-xl border border-line bg-cream"
+                  title="Klik untuk memperbesar"
+                >
+                  <img
+                    src={src}
+                    alt={name}
+                    className="aspect-square w-full object-cover transition duration-200 group-hover:scale-105"
+                  />
+                  <span className="absolute inset-0 grid place-items-center bg-espresso/0 text-white opacity-0 transition group-hover:bg-espresso/45 group-hover:opacity-100">
+                    <ZoomIn size={18} />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-muted">
+            Klik gambar untuk melihat sketsa/foto referensi dalam ukuran penuh.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function OwnerPricingBox({ order, onSave }) {
   const [priceInput, setPriceInput] = useState(
@@ -130,6 +234,8 @@ function OwnerPricingBox({ order, onSave }) {
 export default function Orders() {
   const { orders, updateOrderStatus, updateOrder, removeOrder } = useApp();
   const [filter, setFilter] = useState('Semua');
+  const [lightboxPhoto, setLightboxPhoto] = useState(null);
+
   const list =
     filter === 'Semua'
       ? orders
@@ -237,12 +343,17 @@ export default function Orders() {
                     <p><b>Spesifikasi:</b> {o.custom.options}</p>
                     {o.custom.needBy && <p><b>Dibutuhkan sebelum:</b> {o.custom.needBy}</p>}
                     {o.custom.note && <p><b>Catatan:</b> {o.custom.note}</p>}
-                    {o.custom.hasPhoto && (
+                    {o.custom.hasPhoto && (!o.custom.referencePhotos || o.custom.referencePhotos.length === 0) && (
                       <p className="text-muted">
                         Pelanggan menyiapkan {o.custom.photoCount || 1} foto/sketsa referensi untuk dikirim lewat WhatsApp.
                       </p>
                     )}
                   </div>
+                )}
+
+                {/* Pratinjau Replika Desain + Galeri Foto/Sketsa Referensi */}
+                {o.custom && (
+                  <CustomDesignPanel custom={o.custom} onOpenPhoto={setLightboxPhoto} />
                 )}
 
                 {o.custom && (
@@ -361,6 +472,36 @@ export default function Orders() {
               </article>
             );
           })}
+        </div>
+      )}
+
+      {/* Lightbox Perbesar Foto/Sketsa Referensi */}
+      {lightboxPhoto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-espresso/85 p-4 backdrop-blur-sm"
+          onClick={() => setLightboxPhoto(null)}
+        >
+          <div
+            className="relative max-h-[90vh] max-w-3xl overflow-hidden rounded-2xl border border-gold/40 bg-cream p-3 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between gap-4 px-1">
+              <p className="truncate text-sm font-bold text-espresso">{lightboxPhoto.name}</p>
+              <button
+                type="button"
+                onClick={() => setLightboxPhoto(null)}
+                className="grid h-8 w-8 place-items-center rounded-full bg-sand text-espresso hover:bg-espresso hover:text-gold-light"
+                aria-label="Tutup pratinjau"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <img
+              src={lightboxPhoto.src}
+              alt={lightboxPhoto.name}
+              className="max-h-[78vh] w-auto rounded-xl object-contain"
+            />
+          </div>
         </div>
       )}
     </div>
