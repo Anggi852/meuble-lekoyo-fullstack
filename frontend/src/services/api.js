@@ -145,13 +145,6 @@ export const api = {
   updateFaq: (id, payload) => http.put(`/faqs/${id}`, payload).then((r) => r.data.data),
   deleteFaq: (id) => http.delete(`/faqs/${id}`).then((r) => r.data),
 
-  // Testimonials
-  getTestimonials: () => http.get('/testimonials').then((r) => r.data.data),
-  createTestimonial: (payload) => http.post('/testimonials', payload).then((r) => r.data.data),
-  updateTestimonial: (id, payload) =>
-    http.put(`/testimonials/${id}`, payload).then((r) => r.data.data),
-  deleteTestimonial: (id) => http.delete(`/testimonials/${id}`).then((r) => r.data),
-
   // Testimonials & Reviews
   getTestimonials: () => http.get('/testimonials').then((r) => r.data.data),
   createTestimonial: (payload) => http.post('/testimonials', payload).then((r) => r.data.data),
@@ -160,7 +153,7 @@ export const api = {
   deleteTestimonial: (id) => http.delete(`/testimonials/${id}`).then((r) => r.data),
   submitOrderReview: (payload) =>
     http.post('/testimonials/review', payload).then((r) => r.data.data),
-  
+
   // Gen AI Chat (melalui Backend, tersimpan di DB)
   getChatLogs: () => http.get('/chats').then((r) => r.data.data),
   sendChat: ({ message, activeProductId = null, sessionId = 'web-guest', logOnly = false, intent }) =>
