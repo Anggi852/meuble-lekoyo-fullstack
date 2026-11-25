@@ -478,6 +478,7 @@ function Lemari({ dims, o, c, sheen, view, showScale, pid }) {
   const isCarved = o.ukiran === 'Ukiran Jepara';
 
   // Tab kedua khusus Lemari: Tata Ruang Dalam (bersih & mudah dimengerti!)
+  // Tab kedua khusus Lemari: Tata Ruang Dalam (bersih & tidak tumpang tindih)
   if (view === 'side') {
     return (
       <g>
@@ -487,16 +488,29 @@ function Lemari({ dims, o, c, sheen, view, showScale, pid }) {
         <R x={x0 - 3} y={top - 1} w={W + 6} h={crownH} fill={shade(c, 8)} stroke={dark} sw={1.2} rx={2} />
         {Array.from({ length: n }).map((_, i) => {
           const dx = x0 + 4 + i * doorW;
+          const mid = dx + doorW / 2;
           const isHanging = i < Math.ceil(n / 2);
+          const hangerW = Math.min(18, Math.max(10, doorW * 0.45));
           return (
             <g key={i}>
               <R x={dx + 1} y={top + crownH + 2} w={doorW - 2} h={doorsH} fill="#FAF4E8" stroke={shade(c, -15)} sw={1.2} />
               {isHanging ? (
                 <>
-                  <line x1={dx + 6} x2={dx + doorW - 6} y1={top + crownH + 22} y2={top + crownH + 22} stroke="#8C6239" strokeWidth="3" strokeLinecap="round" />
-                  <text x={dx + doorW / 2} y={top + crownH + 40} textAnchor="middle" fill="#7A4A2B" fontSize="8.5" fontWeight="700">
-                    GANTUNGAN
-                  </text>
+                  {/* Batang gantungan */}
+                  <line x1={dx + 5} x2={dx + doorW - 5} y1={top + crownH + 20} y2={top + crownH + 20} stroke="#8C6239" strokeWidth="2.8" strokeLinecap="round" />
+                  {/* Ikon gantungan baju */}
+                  <path
+                    d={`M${mid} ${top + crownH + 20} L${mid} ${top + crownH + 26} L${mid - hangerW / 2} ${top + crownH + 34} L${mid + hangerW / 2} ${top + crownH + 34} Z`}
+                    fill="none"
+                    stroke="#7A4A2B"
+                    strokeWidth="1.4"
+                    strokeLinejoin="round"
+                  />
+                  {doorW >= 34 && (
+                    <text x={mid} y={top + crownH + 46} textAnchor="middle" fill="#7A4A2B" fontSize="6.8" fontWeight="700">
+                      Gantung
+                    </text>
+                  )}
                   <line x1={dx + 4} x2={dx + doorW - 4} y1={top + crownH + doorsH * 0.78} y2={top + crownH + doorsH * 0.78} stroke={shade(c, -15)} strokeWidth="2.2" />
                 </>
               ) : (
@@ -510,8 +524,62 @@ function Lemari({ dims, o, c, sheen, view, showScale, pid }) {
         {o.laci && (
           <R x={x0 + 5} y={top + bodyH - drawerH} w={W - 10} h={drawerH - 2} fill="#EFE2C6" stroke={shade(c, -15)} sw={1.2} />
         )}
-        <text x={CX} y={top - 8} textAnchor="middle" fill="#7A4A2B" fontSize="10" fontWeight="700">
-          ILUSTRASI TATA RUANG DALAM (BISA REQUEST SEKAT)
+        <text x={CX} y={top - 8} textAnchor="middle" fill="#7A4A2B" fontSize="9.5" fontWeight="700">
+          TATA RUANG DALAM (BISA REQUEST SEKAT)
+        </text>
+        <HDim x1={x0} x2={x0 + W} y={FLOOR + 14} label={`L ${w} cm · Kedalaman ${d} cm`} />
+        <VDim y1={top} y2={FLOOR} x={x0 + W + 14} label={`T ${h} cm`} />
+      </g>
+    );
+  }
+
+  if (view === 'side') {
+    return (
+      <g>
+        {showScale && <HumanScale scale={s} x={Math.max(30, x0 - 34)} />}
+        <Shadow w={W} />
+        <R x={x0} y={top} w={W} h={H} fill="#F5ECD9" stroke={dark} sw={2} rx={2} />
+        <R x={x0 - 3} y={top - 1} w={W + 6} h={crownH} fill={shade(c, 8)} stroke={dark} sw={1.2} rx={2} />
+        {Array.from({ length: n }).map((_, i) => {
+          const dx = x0 + 4 + i * doorW;
+          const mid = dx + doorW / 2;
+          const isHanging = i < Math.ceil(n / 2);
+          const hangerW = Math.min(18, Math.max(10, doorW * 0.45));
+          return (
+            <g key={i}>
+              <R x={dx + 1} y={top + crownH + 2} w={doorW - 2} h={doorsH} fill="#FAF4E8" stroke={shade(c, -15)} sw={1.2} />
+              {isHanging ? (
+                <>
+                  {/* Batang gantungan */}
+                  <line x1={dx + 5} x2={dx + doorW - 5} y1={top + crownH + 20} y2={top + crownH + 20} stroke="#8C6239" strokeWidth="2.8" strokeLinecap="round" />
+                  {/* Ikon gantungan baju */}
+                  <path
+                    d={`M${mid} ${top + crownH + 20} L${mid} ${top + crownH + 26} L${mid - hangerW / 2} ${top + crownH + 34} L${mid + hangerW / 2} ${top + crownH + 34} Z`}
+                    fill="none"
+                    stroke="#7A4A2B"
+                    strokeWidth="1.4"
+                    strokeLinejoin="round"
+                  />
+                  {doorW >= 34 && (
+                    <text x={mid} y={top + crownH + 46} textAnchor="middle" fill="#7A4A2B" fontSize="6.8" fontWeight="700">
+                      Gantung
+                    </text>
+                  )}
+                  <line x1={dx + 4} x2={dx + doorW - 4} y1={top + crownH + doorsH * 0.78} y2={top + crownH + doorsH * 0.78} stroke={shade(c, -15)} strokeWidth="2.2" />
+                </>
+              ) : (
+                [0.2, 0.4, 0.6, 0.8].map((r) => (
+                  <line key={r} x1={dx + 4} x2={dx + doorW - 4} y1={top + crownH + doorsH * r} y2={top + crownH + doorsH * r} stroke={shade(c, -15)} strokeWidth="2.2" />
+                ))
+              )}
+            </g>
+          );
+        })}
+        {o.laci && (
+          <R x={x0 + 5} y={top + bodyH - drawerH} w={W - 10} h={drawerH - 2} fill="#EFE2C6" stroke={shade(c, -15)} sw={1.2} />
+        )}
+        <text x={CX} y={top - 8} textAnchor="middle" fill="#7A4A2B" fontSize="9.5" fontWeight="700">
+          TATA RUANG DALAM (BISA REQUEST SEKAT)
         </text>
         <HDim x1={x0} x2={x0 + W} y={FLOOR + 14} label={`L ${w} cm · Kedalaman ${d} cm`} />
         <VDim y1={top} y2={FLOOR} x={x0 + W + 14} label={`T ${h} cm`} />
@@ -888,7 +956,7 @@ function Kitchen({ dims, o, c, sheen, view, showScale, pid }) {
   const { w = 260, h = 225, d = 60 } = dims;
   const isSide = view === 'side';
   const span = isSide ? d + (o.minibar ? 45 : 0) : w;
-  const s = Math.min(285 / span, 175 / h, 1.35);
+  const s = Math.min(270 / span, 172 / h, 1.32);
   const W = span * s;
   const H = h * s;
   const x0 = CX - W / 2;
@@ -900,6 +968,8 @@ function Kitchen({ dims, o, c, sheen, view, showScale, pid }) {
   const light = shade(c, 32);
   const isCarved = o.gaya === 'Ukiran Jepara';
   const isClassic = o.gaya === 'Klasik Profil' || isCarved;
+  const isL = o.bentuk === 'Sudut (L)';
+  const isU = o.bentuk === 'Huruf U';
 
   if (isSide) {
     const baseW = d * s;
@@ -908,16 +978,12 @@ function Kitchen({ dims, o, c, sheen, view, showScale, pid }) {
       <g>
         {showScale && <HumanScale scale={s} x={Math.max(34, x0 - 34)} />}
         <Shadow w={W} />
-        {/* Dinding belakang */}
         <line x1={x0} x2={x0} y1={top - 6} y2={FLOOR} stroke="#C7B299" strokeWidth="3" />
-        {/* Kabinet Bawah */}
         <R x={x0} y={baseY + 4} w={baseW} h={baseH - 4} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.3} rx={2} />
         <R x={x0 - 1} y={baseY} w={baseW + 5} h={5.5} fill="#E7E0D4" stroke="#B7AA96" sw={1} rx={1.5} />
-        {/* Kabinet Atas */}
         {o.kabinetAtas && (
           <R x={x0} y={top} w={upperW} h={upperH} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.3} rx={2} />
         )}
-        {/* Island / Minibar */}
         {o.minibar && (
           <g>
             <R x={x0 + baseW + 16 * s} y={FLOOR - 92 * s} w={36 * s} h={92 * s} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.2} rx={2} />
@@ -932,11 +998,12 @@ function Kitchen({ dims, o, c, sheen, view, showScale, pid }) {
 
   const doors = Math.max(3, Math.min(7, Math.round(w / 52)));
   const doorW = (W - 8) / doors;
+  const wingW = Math.max(20, Math.min(30, W * 0.14));
 
   return (
     <g>
-      {showScale && <HumanScale scale={s} x={Math.max(24, x0 - 28)} />}
-      <Shadow w={W} />
+      {showScale && <HumanScale scale={s} x={Math.max(20, x0 - (isU ? 42 : 28))} />}
+      <Shadow w={W + (isU ? wingW : isL ? wingW * 0.6 : 0)} />
 
       {/* Backsplash keramik dapur */}
       <R x={x0 + 2} y={top + (o.kabinetAtas ? upperH : 35)} w={W - 4} h={baseY - (top + (o.kabinetAtas ? upperH : 35))} fill="#F4EFE7" stroke="#DFD4C4" sw={1} />
@@ -996,12 +1063,60 @@ function Kitchen({ dims, o, c, sheen, view, showScale, pid }) {
         );
       })}
 
-      {/* Indikator Sudut L / U atau Minibar */}
-      {o.bentuk !== 'Lurus (I)' && (
-        <text x={CX} y={top - (isCarved ? 18 : 7)} textAnchor="middle" fill="#7A4A2B" fontSize="9.5" fontWeight="700">
-          LAYOUT {o.bentuk.toUpperCase()}{o.minibar ? ' + MINIBAR' : ''}
-        </text>
+      {/* Sayap Sudut Kanan (untuk Sudut L & Huruf U) */}
+      {(isL || isU) && (
+        <g>
+          <polygon
+            points={`${x0 + W - wingW},${baseY + 5} ${x0 + W},${baseY + 12} ${x0 + W},${FLOOR + 4} ${x0 + W - wingW},${FLOOR}`}
+            fill={shade(c, -22)}
+            stroke={dark}
+            strokeWidth="1.2"
+          />
+          <polygon
+            points={`${x0 + W - wingW - 2},${baseY} ${x0 + W + 3},${baseY + 7} ${x0 + W + 3},${baseY + 13} ${x0 + W - wingW - 2},${baseY + 6}`}
+            fill="#E3DACB"
+            stroke="#B7AA96"
+            strokeWidth="1"
+          />
+        </g>
       )}
+
+      {/* Sayap Sudut Kiri (khusus Huruf U) */}
+      {isU && (
+        <g>
+          <polygon
+            points={`${x0 + wingW},${baseY + 5} ${x0},${baseY + 12} ${x0},${FLOOR + 4} ${x0 + wingW},${FLOOR}`}
+            fill={shade(c, -22)}
+            stroke={dark}
+            strokeWidth="1.2"
+          />
+          <polygon
+            points={`${x0 + wingW + 2},${baseY} ${x0 - 3},${baseY + 7} ${x0 - 3},${baseY + 13} ${x0 + wingW + 2},${baseY + 6}`}
+            fill="#E3DACB"
+            stroke="#B7AA96"
+            strokeWidth="1"
+          />
+        </g>
+      )}
+
+      {/* Denah Mini Tampak Atas (I / L / U) agar langsung terlihat jelas */}
+      <g transform="translate(342 14)">
+        <rect width="68" height="44" rx="7" fill="#FFFDF8" stroke="#D8C7AE" strokeWidth="1.1" />
+        <text x="34" y="12" textAnchor="middle" fill="#7A4A2B" fontSize="7.2" fontWeight="700">
+          DENAH ATAS
+        </text>
+        {/* Sisi utama atas */}
+        <rect x="14" y="17" width="40" height="7" rx="1.5" fill={c} stroke={dark} strokeWidth="0.9" />
+        {/* Lengan kanan untuk L & U */}
+        {(isL || isU) && (
+          <rect x="47" y="17" width="7" height="20" rx="1.5" fill={c} stroke={dark} strokeWidth="0.9" />
+        )}
+        {/* Lengan kiri khusus U */}
+        {isU && (
+          <rect x="14" y="17" width="7" height="20" rx="1.5" fill={c} stroke={dark} strokeWidth="0.9" />
+        )}
+      </g>
+
       {sheen === 'glossy' && <R x={x0 + 4} y={baseY + 8} w={W * 0.24} h={baseH - 14} fill="#fff" opacity=".14" />}
 
       <HDim x1={x0} x2={x0 + W} y={FLOOR + 14} label={`Panjang ${w} cm`} />
@@ -1736,9 +1851,54 @@ function DipanTingkatReplica({ dims, o, c, view, showScale, pid }) {
   );
 }
 
-// 9F. REPLIKA TANGGA & RAILING KAYU JATI
-function TanggaReplica({ dims, c, showScale, pid }) {
-  const { w = 240, h = 220 } = dims;
+// 9F. REPLIKA TANGGA & RAILING KAYU JATI (Tampak Depan vs Tampak Samping)
+function TanggaReplica({ dims, c, view, showScale, pid }) {
+  const { w = 240, d = 100, h = 220 } = dims;
+  const isSide = view === 'side';
+  const dark = shade(c, -34);
+
+  // TAMPAK DEPAN: Undakan tangga dilihat dari depan + railing kiri & kanan
+  if (!isSide) {
+    const s = Math.min(200 / d, 165 / h, 1.35);
+    const W = d * s;
+    const H = h * s;
+    const x0 = CX - W / 2;
+    const top = FLOOR - H;
+    const steps = 7;
+    const stepH = H / steps;
+    const postW = Math.max(5, 6 * s);
+
+    return (
+      <g>
+        {showScale && <HumanScale scale={s} x={Math.max(28, x0 - 34)} />}
+        <Shadow w={W + 18} />
+
+        {/* Railing & Tiang Kiri-Kanan */}
+        <R x={x0 - postW} y={top - 22 * s} w={postW} h={H + 22 * s} fill={shade(c, -18)} stroke={dark} sw={1.1} rx={1.5} />
+        <R x={x0 + W} y={top - 22 * s} w={postW} h={H + 22 * s} fill={shade(c, -18)} stroke={dark} sw={1.1} rx={1.5} />
+
+        {/* Undakan Anak Tangga dari Bawah ke Atas */}
+        {Array.from({ length: steps }).map((_, i) => {
+          const sy = FLOOR - (i + 1) * stepH;
+          return (
+            <g key={i}>
+              <R x={x0} y={sy} w={W} h={stepH} fill={i % 2 === 0 ? shade(c, -10) : shade(c, -16)} stroke={dark} sw={1} />
+              <R x={x0 - 2} y={sy} w={W + 4} h={Math.max(4, stepH * 0.24)} fill={`url(#${pid}-wood)`} stroke={dark} sw={1} rx={1} />
+            </g>
+          );
+        })}
+
+        {/* Pegangan Railing Atas Kiri-Kanan */}
+        <circle cx={x0 - postW / 2} cy={top - 24 * s} r={postW * 0.75} fill={shade(c, 12)} stroke={dark} sw={1} />
+        <circle cx={x0 + W + postW / 2} cy={top - 24 * s} r={postW * 0.75} fill={shade(c, 12)} stroke={dark} sw={1} />
+
+        <HDim x1={x0} x2={x0 + W} y={FLOOR + 14} label={`Lebar Tangga ${d} cm`} />
+        <VDim y1={top} y2={FLOOR} x={x0 + W + 18} label={`T ${h} cm`} />
+      </g>
+    );
+  }
+
+  // TAMPAK SAMPING: Profil miring bentang tangga + baluster & handrail
   const s = Math.min(265 / w, 170 / h, 1.15);
   const W = w * s;
   const H = h * s;
@@ -1747,7 +1907,6 @@ function TanggaReplica({ dims, c, showScale, pid }) {
   const steps = 6;
   const sw = W / steps;
   const sh = H / steps;
-  const dark = shade(c, -34);
 
   return (
     <g>
@@ -1760,12 +1919,10 @@ function TanggaReplica({ dims, c, showScale, pid }) {
           <g key={i}>
             <R x={sx} y={sy} w={sw + 2} h={FLOOR - sy} fill={shade(c, -8)} stroke={dark} sw={1.1} />
             <R x={sx - 2} y={sy} w={sw + 4} h={5.5} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.1} rx={1.5} />
-            {/* Baluster Railing */}
             <line x1={sx + sw * 0.5} x2={sx + sw * 0.5} y1={sy} y2={sy - 46 * s} stroke={shade(c, -12)} strokeWidth="2.6" />
           </g>
         );
       })}
-      {/* Handrail miring kayu jati */}
       <line x1={x0 + sw * 0.3} y1={FLOOR - sh - 46 * s} x2={x0 + W} y2={top - 46 * s} stroke={shade(c, 8)} strokeWidth="6" strokeLinecap="round" />
       <line x1={x0 + sw * 0.3} y1={FLOOR - sh - 46 * s} x2={x0 + W} y2={top - 46 * s} stroke={dark} strokeWidth="1.2" strokeLinecap="round" />
       <HDim x1={x0} x2={x0 + W} y={FLOOR + 14} label={`Bentang ${w} cm`} />
