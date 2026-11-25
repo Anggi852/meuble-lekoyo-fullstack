@@ -22,6 +22,7 @@ import {
   Phone,
   ExternalLink,
   Navigation,
+  Package,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import ProductCard from '../components/ProductCard';
