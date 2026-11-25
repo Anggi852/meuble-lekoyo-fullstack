@@ -229,12 +229,12 @@ export default function AdminLogin() {
           </div>
         </div>
 
-        <Linkfoot
+        <Link
           to="/"
           className="mt-6 flex items-center justify-center gap-1.5 text-sm font-semibold text-gold-light/85 transition hover:text-gold-light"
         >
           <ArrowLeft size={16} /> Kembali ke Website Galeri
-        </Linkfoot>
+        </Link>
       </div>
     </div>
   );
