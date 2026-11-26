@@ -349,7 +349,6 @@ export default function Custom() {
     }
   };
 
-  const secondViewLabel = type === 'lemari' ? 'Tata Dalam' : 'Tampak Samping';
 
   return (
     <div className="section">
@@ -404,8 +403,21 @@ export default function Custom() {
                     view === 'side' ? 'bg-gold text-espresso' : 'text-cream/75 hover:bg-white/10'
                   }`}
                 >
-                  {secondViewLabel}
+                  Samping
                 </button>
+                {type === 'lemari' && (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={view === 'inside'}
+                    onClick={() => { setView('inside'); setMobilePreviewOpen(true); }}
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                      view === 'inside' ? 'bg-gold text-espresso' : 'text-cream/75 hover:bg-white/10'
+                    }`}
+                  >
+                    Tata Dalam
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-1.5">
                 <button
@@ -952,8 +964,21 @@ export default function Custom() {
                       view === 'side' ? 'bg-gold text-espresso shadow-gold' : 'text-cream/75 hover:bg-white/10 hover:text-cream'
                     }`}
                   >
-                    {secondViewLabel}
+                    Tampak Samping
                   </button>
+                  {type === 'lemari' && (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={view === 'inside'}
+                      onClick={() => setView('inside')}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                        view === 'inside' ? 'bg-gold text-espresso shadow-gold' : 'text-cream/75 hover:bg-white/10 hover:text-cream'
+                      }`}
+                    >
+                      Tata Dalam
+                    </button>
+                  )}
                 </div>
 
                 <button

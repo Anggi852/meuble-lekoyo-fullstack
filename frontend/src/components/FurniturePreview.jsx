@@ -461,8 +461,11 @@ function Kursi({ dims, o, c, sheen, view, showScale, pid }) {
 /* ================================================================== */
 function Lemari({ dims, o, c, sheen, view, showScale, pid }) {
   const { w = 155, h = 205, d = 58 } = dims;
-  const s = Math.min(275 / w, 165 / h, 2.0);
-  const W = w * s;
+  const isSide = view === 'side';
+  const isInside = view === 'inside';
+  const span = isSide ? d : w;
+  const s = Math.min(275 / span, 165 / h, 2.0);
+  const W = span * s;
   const H = h * s;
   const x0 = CX - W / 2;
   const top = FLOOR - H;
@@ -477,63 +480,24 @@ function Lemari({ dims, o, c, sheen, view, showScale, pid }) {
   const light = shade(c, 32);
   const isCarved = o.ukiran === 'Ukiran Jepara';
 
-  // Tab kedua khusus Lemari: Tata Ruang Dalam (bersih & mudah dimengerti!)
-  // Tab kedua khusus Lemari: Tata Ruang Dalam (bersih & tidak tumpang tindih)
-  if (view === 'side') {
+  // Tampak Samping (menampilkan perubahan Kedalaman d secara nyata)
+  if (isSide) {
     return (
       <g>
-        {showScale && <HumanScale scale={s} x={Math.max(30, x0 - 34)} />}
-        <Shadow w={W} />
-        <R x={x0} y={top} w={W} h={H} fill="#F5ECD9" stroke={dark} sw={2} rx={2} />
-        <R x={x0 - 3} y={top - 1} w={W + 6} h={crownH} fill={shade(c, 8)} stroke={dark} sw={1.2} rx={2} />
-        {Array.from({ length: n }).map((_, i) => {
-          const dx = x0 + 4 + i * doorW;
-          const mid = dx + doorW / 2;
-          const isHanging = i < Math.ceil(n / 2);
-          const hangerW = Math.min(18, Math.max(10, doorW * 0.45));
-          return (
-            <g key={i}>
-              <R x={dx + 1} y={top + crownH + 2} w={doorW - 2} h={doorsH} fill="#FAF4E8" stroke={shade(c, -15)} sw={1.2} />
-              {isHanging ? (
-                <>
-                  {/* Batang gantungan */}
-                  <line x1={dx + 5} x2={dx + doorW - 5} y1={top + crownH + 20} y2={top + crownH + 20} stroke="#8C6239" strokeWidth="2.8" strokeLinecap="round" />
-                  {/* Ikon gantungan baju */}
-                  <path
-                    d={`M${mid} ${top + crownH + 20} L${mid} ${top + crownH + 26} L${mid - hangerW / 2} ${top + crownH + 34} L${mid + hangerW / 2} ${top + crownH + 34} Z`}
-                    fill="none"
-                    stroke="#7A4A2B"
-                    strokeWidth="1.4"
-                    strokeLinejoin="round"
-                  />
-                  {doorW >= 34 && (
-                    <text x={mid} y={top + crownH + 46} textAnchor="middle" fill="#7A4A2B" fontSize="6.8" fontWeight="700">
-                      Gantung
-                    </text>
-                  )}
-                  <line x1={dx + 4} x2={dx + doorW - 4} y1={top + crownH + doorsH * 0.78} y2={top + crownH + doorsH * 0.78} stroke={shade(c, -15)} strokeWidth="2.2" />
-                </>
-              ) : (
-                [0.2, 0.4, 0.6, 0.8].map((r) => (
-                  <line key={r} x1={dx + 4} x2={dx + doorW - 4} y1={top + crownH + doorsH * r} y2={top + crownH + doorsH * r} stroke={shade(c, -15)} strokeWidth="2.2" />
-                ))
-              )}
-            </g>
-          );
-        })}
-        {o.laci && (
-          <R x={x0 + 5} y={top + bodyH - drawerH} w={W - 10} h={drawerH - 2} fill="#EFE2C6" stroke={shade(c, -15)} sw={1.2} />
-        )}
-        <text x={CX} y={top - 8} textAnchor="middle" fill="#7A4A2B" fontSize="9.5" fontWeight="700">
-          TATA RUANG DALAM (BISA REQUEST SEKAT)
-        </text>
-        <HDim x1={x0} x2={x0 + W} y={FLOOR + 14} label={`L ${w} cm · Kedalaman ${d} cm`} />
+        {showScale && <HumanScale scale={s} x={Math.max(30, x0 - 38)} />}
+        <Shadow w={W + 8} />
+        <R x={x0 + 2} y={FLOOR - plinth} w={W - 4} h={plinth} fill={dark} />
+        <R x={x0} y={top} w={W} h={bodyH} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.4} rx={2} />
+        <R x={x0 - 3} y={top - 1} w={W + 6} h={crownH} fill={shade(c, 12)} stroke={dark} sw={1.1} rx={2} />
+        <R x={x0 + 5} y={top + crownH + 6} w={Math.max(4, W - 10)} h={Math.max(10, bodyH - crownH - 12)} fill="none" stroke={dark} sw={1} rx={2} opacity=".55" />
+        <HDim x1={x0} x2={x0 + W} y={FLOOR + 14} label={`Kedalaman ${d} cm`} />
         <VDim y1={top} y2={FLOOR} x={x0 + W + 14} label={`T ${h} cm`} />
       </g>
     );
   }
 
-  if (view === 'side') {
+  // Tata Ruang Dalam
+  if (isInside) {
     return (
       <g>
         {showScale && <HumanScale scale={s} x={Math.max(30, x0 - 34)} />}
@@ -550,9 +514,7 @@ function Lemari({ dims, o, c, sheen, view, showScale, pid }) {
               <R x={dx + 1} y={top + crownH + 2} w={doorW - 2} h={doorsH} fill="#FAF4E8" stroke={shade(c, -15)} sw={1.2} />
               {isHanging ? (
                 <>
-                  {/* Batang gantungan */}
                   <line x1={dx + 5} x2={dx + doorW - 5} y1={top + crownH + 20} y2={top + crownH + 20} stroke="#8C6239" strokeWidth="2.8" strokeLinecap="round" />
-                  {/* Ikon gantungan baju */}
                   <path
                     d={`M${mid} ${top + crownH + 20} L${mid} ${top + crownH + 26} L${mid - hangerW / 2} ${top + crownH + 34} L${mid + hangerW / 2} ${top + crownH + 34} Z`}
                     fill="none"
@@ -594,20 +556,16 @@ function Lemari({ dims, o, c, sheen, view, showScale, pid }) {
       <R x={x0 + 3} y={FLOOR - plinth} w={W - 6} h={plinth} fill={dark} />
       <R x={x0} y={top} w={W} h={bodyH} fill={shade(c, -8)} stroke={dark} sw={1.3} rx={2} />
 
-      {/* Mahkota Ukiran Jepara di Puncak Lemari */}
       {isCarved && (
         <JeparaCrest cx={CX} y={top} width={W * 0.92} height={22} fill={`url(#${pid}-wood)`} dark={dark} light={light} />
       )}
 
-      {/* Lis Mahkota Atas */}
       <R x={x0 - (isCarved ? 6 : 2)} y={top - 1} w={W + (isCarved ? 12 : 4)} h={crownH} fill={shade(c, 12)} stroke={dark} sw={1.1} rx={2} />
 
-      {/* Rel Pintu Geser */}
       {o.mekanisme === 'Geser (Sliding)' && (
         <line x1={x0 + 4} x2={x0 + W - 4} y1={top + crownH + 1} y2={top + crownH + 1} stroke="#3A2518" strokeWidth="2.4" />
       )}
 
-      {/* Daun Pintu */}
       {Array.from({ length: n }).map((_, i) => {
         const dx = x0 + 4 + i * doorW;
         const dy = top + crownH + 3;
@@ -636,7 +594,6 @@ function Lemari({ dims, o, c, sheen, view, showScale, pid }) {
             {!isMirror && (
               <R x={dx + 5} y={dy + 7} w={doorW - 10} h={doorsH - 14} fill="none" stroke={dark} sw={1} rx={2} opacity=".7" />
             )}
-            {/* Ukiran Jepara Asli di Daun Pintu (Medali Bunga + Ornamen Sudut) */}
             {!isMirror && isCarved && (
               <>
                 <JeparaPanelMedallion cx={dx + doorW / 2} cy={dy + doorsH / 2} w={doorW - 12} h={doorsH * 0.48} dark={dark} light={light} />
@@ -651,7 +608,6 @@ function Lemari({ dims, o, c, sheen, view, showScale, pid }) {
         );
       })}
 
-      {/* Laci Bawah */}
       {o.laci &&
         [0, 1].map((i) => {
           const dw = (W - 8) / 2;
@@ -1131,7 +1087,7 @@ function Kitchen({ dims, o, c, sheen, view, showScale, pid }) {
 function Buffet({ dims, o, c, sheen, view, showScale, pid }) {
   const { w = 180, h = 68, d = 45 } = dims;
   const isBackdrop = o.model === 'Backdrop TV + Rak';
-  const effectiveH = isBackdrop ? Math.max(h, 185) : h;
+  const effectiveH = h;
   const isSide = view === 'side';
   const span = isSide ? d : w;
   const s = Math.min(280 / span, 170 / effectiveH, 1.8);
@@ -1388,19 +1344,16 @@ function MimbarReplica({ dims, o, c, sheen, view, showScale, pid }) {
   const { w = 110, d = 95, h = 145 } = dims;
   const isSide = view === 'side';
   const span = isSide ? d : w;
-  const effH = Math.max(h, 130);
-  const s = Math.min(200 / span, 155 / Math.max(effH, 178), 1.18);
+  const s = Math.min(200 / span, 155 / Math.max(h, 175), 1.18);
   const W = span * s;
-  const H = effH * s;
+  const H = h * s;
   const x0 = CX - W / 2;
-  const top = FLOOR - H;
+  const podiumTop = FLOOR - H;
   const dark = shade(c, -34);
   const light = shade(c, 32);
   const isCarved = o.gaya === 'Ukiran Jepara';
   const isClassic = o.gaya === 'Klasik Profil' || isCarved;
-  const podiumBodyH = Math.min(H, 128 * s);
-  const podiumTop = FLOOR - podiumBodyH;
-  const stepH = 16 * s;
+  const stepH = Math.min(16 * s, H * 0.18);
 
   if (isSide) {
     const bodyW = W * 0.56;
@@ -1409,111 +1362,74 @@ function MimbarReplica({ dims, o, c, sheen, view, showScale, pid }) {
       <g>
         {showScale && <HumanScale scale={s} x={Math.max(28, x0 - 38)} />}
         <Shadow w={W + 18} />
-        {/* Pijakan tangga masuk di sisi belakang mimbar */}
         <R x={x0 - 8} y={FLOOR - stepH} w={W - bodyW + 14} h={stepH} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.2} rx={2} />
         <R x={x0 - 20} y={FLOOR - stepH * 0.52} w={16} h={stepH * 0.52} fill={shade(c, -10)} stroke={dark} sw={1.1} rx={1.5} />
-
-        {/* Orang berdiri di pijakan mimbar menghadap ke papan baca */}
         <MimbarPersonSide x={x0 + (W - bodyW) * 0.45} floorY={FLOOR} scale={s} stepH={stepH} />
-
-        {/* Bodi mimbar tampak samping */}
-        <R x={bx} y={podiumTop + 10} w={bodyW} h={podiumBodyH - 10} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.3} rx={2} />
-        {/* Rak buku kecil di bagian belakang dalam mimbar */}
-        <line x1={bx + 2} x2={bx + bodyW * 0.45} y1={podiumTop + podiumBodyH * 0.45} y2={podiumTop + podiumBodyH * 0.45} stroke={dark} strokeWidth="2.4" />
-        {/* Papan baca miring (lectern) */}
+        <R x={bx} y={podiumTop + 8} w={bodyW} h={Math.max(20, H - 8)} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.3} rx={2} />
+        <line x1={bx + 2} x2={bx + bodyW * 0.45} y1={podiumTop + H * 0.48} y2={podiumTop + H * 0.48} stroke={dark} strokeWidth="2.4" />
         <polygon
-          points={`${bx - 8},${podiumTop + 14} ${bx + bodyW + 6},${podiumTop + 2} ${bx + bodyW + 6},${podiumTop + 9} ${bx - 8},${podiumTop + 21}`}
+          points={`${bx - 8},${podiumTop + 12} ${bx + bodyW + 6},${podiumTop} ${bx + bodyW + 6},${podiumTop + 7} ${bx - 8},${podiumTop + 19}`}
           fill={shade(c, 12)}
           stroke={dark}
           strokeWidth="1.2"
         />
-        {/* Mikrofon gooseneck mengarah ke pembicara */}
         <path
-          d={`M${bx + bodyW * 0.45} ${podiumTop + 8} Q${bx + 4} ${podiumTop - 18} ${bx - 12} ${podiumTop - 10}`}
+          d={`M${bx + bodyW * 0.45} ${podiumTop + 6} Q${bx + 4} ${podiumTop - 18} ${bx - 12} ${podiumTop - 10}`}
           fill="none"
           stroke="#262220"
           strokeWidth="2.2"
           strokeLinecap="round"
         />
         <ellipse cx={bx - 14} cy={podiumTop - 9} rx="3.8" ry="2.6" fill="#262220" />
-        {/* Tiang & kubah kecil atas bila tinggi > 155 */}
-        {h >= 155 && (
-          <g>
-            <R x={bx + bodyW - 8} y={top + 18} w={7} h={podiumTop - top - 10} fill={shade(c, -12)} stroke={dark} sw={1} />
-            <path d={`M${x0 - 4} ${top + 20} Q${CX} ${top - 6} ${bx + bodyW + 8} ${top + 20} Z`} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.3} />
-          </g>
-        )}
-
-        <HDim x1={x0 - 16} x2={bx + bodyW} y={FLOOR + 14} label={`Kedalaman ${d} cm (incl. pijakan)`} />
-        <VDim y1={h >= 155 ? top : podiumTop - 16} y2={FLOOR} x={bx + bodyW + 14} label={`T ${h} cm`} />
+        <HDim x1={x0 - 16} x2={bx + bodyW} y={FLOOR + 14} label={`Kedalaman ${d} cm`} />
+        <VDim y1={podiumTop} y2={FLOOR} x={bx + bodyW + 14} label={`T ${h} cm`} />
       </g>
     );
   }
 
   const baseW = W + 16;
-  const colW = Math.max(8, W * 0.11);
+  const colW = Math.max(7, Math.min(16, W * 0.11));
 
   return (
     <g>
       {showScale && <HumanScale scale={s} x={Math.max(24, x0 - 40)} />}
       <Shadow w={baseW} />
-
-      {/* ORANG BERDIRI DI BELAKANG MIMBAR / PODIUM */}
       <MimbarPersonFront cx={CX} floorY={FLOOR} scale={s} stepH={stepH} />
 
-      {/* Tiang penyangga & atap kubah mimbar masjid bila tinggi >= 155 cm */}
-      {h >= 155 && (
-        <g>
-          <R x={x0 + 4} y={top + 22} w={colW * 0.72} h={podiumTop - top - 16} fill={shade(c, -12)} stroke={dark} sw={1.1} />
-          <R x={x0 + W - 4 - colW * 0.72} y={top + 22} w={colW * 0.72} h={podiumTop - top - 16} fill={shade(c, -12)} stroke={dark} sw={1.1} />
-          {/* Lengkungan kubah atap mimbar */}
-          <path
-            d={`M${x0 - 6} ${top + 24} Q${CX} ${top - 4} ${x0 + W + 6} ${top + 24} Z`}
-            fill={`url(#${pid}-wood)`}
-            stroke={dark}
-            strokeWidth="1.4"
-          />
-          <circle cx={CX} cy={top + 2} r="4.5" fill="#C9A227" stroke={dark} strokeWidth="0.9" />
-        </g>
-      )}
-
-      {/* Bodi Utama Podium / Mimbar (di depan orang) */}
       <R x={x0 - 8} y={FLOOR - 10} w={baseW} h={10} fill={shade(c, -16)} stroke={dark} sw={1.3} rx={2} />
-      <R x={x0} y={podiumTop + 8} w={W} h={podiumBodyH - 18} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.4} rx={3} />
+      <R x={x0} y={podiumTop + 8} w={W} h={Math.max(20, H - 18)} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.4} rx={3} />
+      <R x={x0 + 2} y={podiumTop + 10} w={colW} h={Math.max(16, H - 22)} fill={shade(c, -8)} stroke={dark} sw={1} rx={1.5} />
+      <R x={x0 + W - colW - 2} y={podiumTop + 10} w={colW} h={Math.max(16, H - 22)} fill={shade(c, -8)} stroke={dark} sw={1} rx={1.5} />
 
-      {/* Pilar Samping Mimbar */}
-      <R x={x0 + 2} y={podiumTop + 10} w={colW} h={podiumBodyH - 22} fill={shade(c, -8)} stroke={dark} sw={1} rx={1.5} />
-      <R x={x0 + W - colW - 2} y={podiumTop + 10} w={colW} h={podiumBodyH - 22} fill={shade(c, -8)} stroke={dark} sw={1} rx={1.5} />
-
-      {/* Panel Depan + Lengkungan Kubah / Ukiran Jepara */}
-      <R x={x0 + colW + 6} y={podiumTop + 18} w={W - 2 * colW - 12} h={podiumBodyH - 36} fill={shade(c, 4)} stroke={dark} sw={1.1} rx={2.5} />
-      {isClassic && (
-        <path
-          d={`M${x0 + colW + 12} ${FLOOR - 22} L${x0 + colW + 12} ${podiumTop + 42} Q${CX} ${podiumTop + 20} ${x0 + W - colW - 12} ${podiumTop + 42} L${x0 + W - colW - 12} ${FLOOR - 22} Z`}
-          fill="none"
-          stroke={dark}
-          strokeWidth="1.2"
-          opacity=".8"
-        />
-      )}
-      {isCarved && (
+      {W - 2 * colW - 12 > 14 && (
         <>
-          <JeparaPanelMedallion cx={CX} cy={podiumTop + podiumBodyH * 0.56} w={W - 2 * colW - 20} h={podiumBodyH * 0.45} dark={dark} light={light} />
-          <JeparaCrest cx={CX} y={podiumTop + 11} width={W * 0.84} height={15} fill={`url(#${pid}-wood)`} dark={dark} light={light} />
+          <R x={x0 + colW + 6} y={podiumTop + 18} w={W - 2 * colW - 12} h={Math.max(12, H - 36)} fill={shade(c, 4)} stroke={dark} sw={1.1} rx={2.5} />
+          {isClassic && H > 55 && (
+            <path
+              d={`M${x0 + colW + 12} ${FLOOR - 22} L${x0 + colW + 12} ${podiumTop + 36} Q${CX} ${podiumTop + 18} ${x0 + W - colW - 12} ${podiumTop + 36} L${x0 + W - colW - 12} ${FLOOR - 22} Z`}
+              fill="none"
+              stroke={dark}
+              strokeWidth="1.2"
+              opacity=".8"
+            />
+          )}
+          {isCarved && (
+            <>
+              <JeparaPanelMedallion cx={CX} cy={podiumTop + H * 0.56} w={W - 2 * colW - 20} h={H * 0.42} dark={dark} light={light} />
+              <JeparaCrest cx={CX} y={podiumTop + 11} width={W * 0.84} height={14} fill={`url(#${pid}-wood)`} dark={dark} light={light} />
+            </>
+          )}
         </>
       )}
 
-      {/* Papan Baca Atas Podium + Naskah + Mikrofon */}
       <R x={x0 - 6} y={podiumTop + 3} w={W + 12} h={8} fill={shade(c, 14)} stroke={dark} sw={1.2} rx={2.5} />
-      {/* Lembar Naskah/Kitab */}
-      <R x={CX - 14} y={podiumTop - 1} w={28} h={5} fill="#FFFDF8" stroke="#CBBBA4" sw={0.9} rx={1} />
-      {/* Mikrofon Gooseneck */}
-      <path d={`M${CX + 18} ${podiumTop + 3} Q${CX + 22} ${podiumTop - 18} ${CX + 9} ${podiumTop - 21}`} fill="none" stroke="#262220" strokeWidth="2" strokeLinecap="round" />
+      <R x={CX - Math.min(14, W * 0.25)} y={podiumTop - 1} w={Math.min(28, W * 0.5)} h={5} fill="#FFFDF8" stroke="#CBBBA4" sw={0.9} rx={1} />
+      <path d={`M${CX + Math.min(18, W * 0.28)} ${podiumTop + 3} Q${CX + Math.min(22, W * 0.34)} ${podiumTop - 18} ${CX + 9} ${podiumTop - 21}`} fill="none" stroke="#262220" strokeWidth="2" strokeLinecap="round" />
       <circle cx={CX + 8} cy={podiumTop - 21} r="3.2" fill="#262220" />
       {sheen === 'glossy' && <R x={x0 - 3} y={podiumTop + 4.5} w={W + 6} h={2.2} fill="#fff" opacity=".38" rx={1} />}
 
       <HDim x1={x0 - 8} x2={x0 + W + 8} y={FLOOR + 14} label={`Lebar ${w} cm`} />
-      <VDim y1={h >= 155 ? top : podiumTop} y2={FLOOR} x={x0 + W + 16} label={`T ${h} cm`} />
+      <VDim y1={podiumTop} y2={FLOOR} x={x0 + W + 16} label={`T ${h} cm`} />
     </g>
   );
 }
@@ -1528,84 +1444,84 @@ function GazeboReplica({ dims, o, c, view, showScale, pid }) {
   const H = h * s;
   const x0 = CX - W / 2;
   const top = FLOOR - H;
-  const roofH = H * 0.36;
+  const roofH = H * 0.34;
   const eaveY = top + roofH;
-  const deckY = FLOOR - 26 * s;
-  const railY = deckY - 38 * s;
-  const postW = Math.max(7, 11 * s);
+  const deckY = FLOOR - Math.min(26 * s, H * 0.16);
+  const railY = deckY - Math.min(38 * s, (deckY - eaveY) * 0.45);
+  const postW = Math.max(4, Math.min(11 * s, W * 0.16));
+  const overhang = Math.min(18, Math.max(6, W * 0.2));
   const dark = shade(c, -34);
   const light = shade(c, 32);
   const isCarved = o.gaya === 'Ukiran Jepara';
+  const showDetail = W >= 65;
 
   return (
     <g>
       {showScale && <HumanScale scale={s} x={Math.max(22, x0 - 24)} />}
-      <Shadow w={W + 24} />
+      <Shadow w={W + overhang * 1.4} />
 
-      {/* Umpak Batu Alam */}
-      <R x={x0 + 6} y={FLOOR - 10} w={postW + 6} h={10} fill="#8C8378" stroke="#5D564E" sw={1} rx={1.5} />
-      <R x={x0 + W - 12 - postW} y={FLOOR - 10} w={postW + 6} h={10} fill="#8C8378" stroke="#5D564E" sw={1} rx={1.5} />
+      <R x={x0 + 2} y={FLOOR - 8} w={postW + 4} h={8} fill="#8C8378" stroke="#5D564E" sw={1} rx={1.5} />
+      <R x={x0 + W - postW - 6} y={FLOOR - 8} w={postW + 4} h={8} fill="#8C8378" stroke="#5D564E" sw={1} rx={1.5} />
 
-      {/* Tiang Belakang (lebih gelap untuk kedalaman 3D) */}
-      <R x={x0 + 22} y={eaveY} w={postW * 0.8} h={deckY - eaveY} fill={shade(c, -26)} />
-      <R x={x0 + W - 22 - postW * 0.8} y={eaveY} w={postW * 0.8} h={deckY - eaveY} fill={shade(c, -26)} />
+      {showDetail && (
+        <>
+          <R x={x0 + 18} y={eaveY} w={postW * 0.8} h={deckY - eaveY} fill={shade(c, -26)} />
+          <R x={x0 + W - 18 - postW * 0.8} y={eaveY} w={postW * 0.8} h={deckY - eaveY} fill={shade(c, -26)} />
+          <g opacity=".82">
+            <circle cx={CX - W * 0.14} cy={deckY - 48 * s} r={Math.max(4, 9 * s)} fill="#7A4A2B" />
+            <rect x={CX - W * 0.14 - 8 * s} y={deckY - 38 * s} width={16 * s} height={28 * s} rx={5} fill="#8E5B38" />
+            <rect x={CX - W * 0.14 - 11 * s} y={deckY - 12 * s} width={26 * s} height={11 * s} rx={4} fill="#5E3820" />
+          </g>
+        </>
+      )}
 
-      {/* Orang duduk santai di dalam gazebo */}
-      <g opacity=".82">
-        <circle cx={CX - W * 0.14} cy={deckY - 48 * s} r={Math.max(4.5, 9 * s)} fill="#7A4A2B" />
-        <rect x={CX - W * 0.14 - 8 * s} y={deckY - 38 * s} width={16 * s} height={28 * s} rx={5} fill="#8E5B38" />
-        <rect x={CX - W * 0.14 - 11 * s} y={deckY - 12 * s} width={26 * s} height={11 * s} rx={4} fill="#5E3820" />
-      </g>
+      <R x={x0 + 2} y={deckY} w={Math.max(8, W - 4)} h={Math.max(5, 10 * s)} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.2} rx={2} />
 
-      {/* Lantai Panggung Kayu Jati */}
-      <R x={x0 + 4} y={deckY} w={W - 8} h={11 * s} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.2} rx={2} />
-      {/* Anak Tangga Masuk (tampak depan) */}
-      {!isSide && (
+      {!isSide && showDetail && (
         <>
           <R x={CX - 22} y={FLOOR - 13 * s} w={44} h={6 * s} fill={shade(c, 8)} stroke={dark} sw={1} rx={1} />
           <R x={CX - 26} y={FLOOR - 6 * s} w={52} h={6 * s} fill={shade(c, -4)} stroke={dark} sw={1} rx={1} />
         </>
       )}
 
-      {/* Pagar Keliling Berjeruji */}
-      <R x={x0 + 9} y={railY} w={isSide ? W - 18 : W * 0.34} h={5} fill={shade(c, 8)} stroke={dark} sw={1} rx={1.5} />
-      {!isSide && <R x={x0 + W - 9 - W * 0.34} y={railY} w={W * 0.34} h={5} fill={shade(c, 8)} stroke={dark} sw={1} rx={1.5} />}
-      {Array.from({ length: isSide ? 9 : 4 }).map((_, i) => {
-        const leftX = x0 + 16 + i * ((isSide ? W - 32 : W * 0.28) / (isSide ? 8 : 3));
-        return (
-          <g key={i}>
-            <line x1={leftX} x2={leftX} y1={railY + 4} y2={deckY} stroke={dark} strokeWidth="2" />
-            {!isSide && <line x1={x0 + W - (leftX - x0)} x2={x0 + W - (leftX - x0)} y1={railY + 4} y2={deckY} stroke={dark} strokeWidth="2" />}
-          </g>
-        );
-      })}
+      {showDetail && (
+        <>
+          <R x={x0 + 6} y={railY} w={isSide ? W - 12 : W * 0.34} h={5} fill={shade(c, 8)} stroke={dark} sw={1} rx={1.5} />
+          {!isSide && <R x={x0 + W - 6 - W * 0.34} y={railY} w={W * 0.34} h={5} fill={shade(c, 8)} stroke={dark} sw={1} rx={1.5} />}
+          {Array.from({ length: isSide ? 7 : 4 }).map((_, i) => {
+            const leftX = x0 + 12 + i * ((isSide ? W - 24 : W * 0.28) / (isSide ? 6 : 3));
+            return (
+              <g key={i}>
+                <line x1={leftX} x2={leftX} y1={railY + 4} y2={deckY} stroke={dark} strokeWidth="2" />
+                {!isSide && <line x1={x0 + W - (leftX - x0)} x2={x0 + W - (leftX - x0)} y1={railY + 4} y2={deckY} stroke={dark} strokeWidth="2" />}
+              </g>
+            );
+          })}
+        </>
+      )}
 
-      {/* Tiang Depan Soko Guru */}
-      <R x={x0 + 9} y={eaveY} w={postW} h={FLOOR - 9 - eaveY} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.3} rx={1.5} />
-      <R x={x0 + W - 9 - postW} y={eaveY} w={postW} h={FLOOR - 9 - eaveY} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.3} rx={1.5} />
+      <R x={x0 + 4} y={eaveY} w={postW} h={FLOOR - 8 - eaveY} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.3} rx={1.5} />
+      <R x={x0 + W - 4 - postW} y={eaveY} w={postW} h={FLOOR - 8 - eaveY} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.3} rx={1.5} />
 
-      {/* Lisplang & Ukiran Jepara di bawah atap */}
-      <R x={x0 + 2} y={eaveY} w={W - 4} h={10} fill={shade(c, -8)} stroke={dark} sw={1.1} rx={1.5} />
-      {isCarved && <JeparaScrollBorder cx={CX} cy={eaveY + 5} width={W - 22} height={8} dark={dark} light={light} />}
+      <R x={x0} y={eaveY} w={W} h={8} fill={shade(c, -8)} stroke={dark} sw={1.1} rx={1.5} />
+      {isCarved && showDetail && <JeparaScrollBorder cx={CX} cy={eaveY + 4} width={W - 18} height={7} dark={dark} light={light} />}
 
-      {/* Atap Limasan / Joglo Bertingkat */}
       <polygon
-        points={`${x0 - 18},${eaveY + 2} ${x0 + W * 0.24},${top + roofH * 0.38} ${x0 + W * 0.76},${top + roofH * 0.38} ${x0 + W + 18},${eaveY + 2}`}
+        points={`${x0 - overhang},${eaveY + 2} ${x0 + W * 0.24},${top + roofH * 0.38} ${x0 + W * 0.76},${top + roofH * 0.38} ${x0 + W + overhang},${eaveY + 2}`}
         fill="#7E3F24"
         stroke="#4A2312"
-        strokeWidth="1.5"
+        strokeWidth="1.4"
       />
       <polygon
         points={`${x0 + W * 0.22},${top + roofH * 0.42} ${CX},${top + 4} ${x0 + W * 0.78},${top + roofH * 0.42}`}
         fill="#944B2A"
         stroke="#4A2312"
-        strokeWidth="1.5"
+        strokeWidth="1.4"
       />
-      {/* Mustaka puncak atap */}
-      <path d={`M${CX - 5} ${top + 5} L${CX} ${top - 7} L${CX + 5} ${top + 5} Z`} fill="#C9A227" stroke="#5A3A10" strokeWidth="1" />
+      <path d={`M${CX - 4} ${top + 5} L${CX} ${top - 6} L${CX + 4} ${top + 5} Z`} fill="#C9A227" stroke="#5A3A10" strokeWidth="1" />
 
       <HDim x1={x0} x2={x0 + W} y={FLOOR + 14} label={isSide ? `Kedalaman ${d} cm` : `Lebar ${w} cm`} />
-      <VDim y1={top} y2={FLOOR} x={x0 + W + 18} label={`T ${h} cm`} />
+      <VDim y1={top} y2={FLOOR} x={x0 + W + overhang + 6} label={`T ${h} cm`} />
     </g>
   );
 }
@@ -1724,6 +1640,11 @@ function RakBukuReplica({ dims, o, c, sheen, view, showScale, pid }) {
   }
 
   const bookColors = ['#8C3B2B', '#3E5C48', '#B8893A', '#4A5B73', '#6E3F22', '#A66B47'];
+  const innerX = x0 + 6;
+  const innerW = Math.max(8, W - 12);
+  const bookCount = innerW < 36 ? 2 : innerW < 58 ? 3 : 5;
+  const showVase = innerW >= 54;
+  const bw = Math.max(3.5, Math.min(11, (innerW - (showVase ? 22 : 8)) / (bookCount + 0.8)));
 
   return (
     <g>
@@ -1731,22 +1652,20 @@ function RakBukuReplica({ dims, o, c, sheen, view, showScale, pid }) {
       <Shadow w={W + 10} />
       {isCarved && <JeparaCrest cx={CX} y={top + 1} width={W * 0.9} height={18} fill={`url(#${pid}-wood)`} dark={dark} light={light} />}
 
-      {/* Badan Belakang Rak */}
       <R x={x0} y={top} w={W} h={H} fill={shade(c, -10)} stroke={dark} sw={1.4} rx={2} />
-      {/* Interior Rak Terbuka */}
-      <R x={x0 + 6} y={top + 8} w={W - 12} h={shelfAreaH} fill="#F5ECD9" stroke={dark} sw={1} />
+      <R x={innerX} y={top + 8} w={innerW} h={shelfAreaH} fill="#F5ECD9" stroke={dark} sw={1} />
 
-      {/* Ambalan + Isi Buku & Vas Pajangan */}
       {Array.from({ length: shelves }).map((_, i) => {
         const sy = top + 8 + ((i + 1) * shelfAreaH) / shelves;
         const rowH = shelfAreaH / shelves;
         return (
           <g key={i}>
-            {/* Deretan buku berwarna hangat */}
-            {Array.from({ length: 5 }).map((__, b) => {
-              const bw = Math.max(4, (W - 28) / 11);
+            {Array.from({ length: bookCount }).map((__, b) => {
               const bh = rowH * (0.56 + ((b + i) % 3) * 0.11);
-              const bx = x0 + 11 + (i % 2 === 0 ? b * (bw + 1.5) : W - 26 - (b + 1) * (bw + 1.5));
+              const bx =
+                i % 2 === 0
+                  ? innerX + 4 + b * (bw + 1.4)
+                  : innerX + innerW - 4 - (b + 1) * (bw + 1.4);
               return (
                 <rect
                   key={b}
@@ -1761,29 +1680,29 @@ function RakBukuReplica({ dims, o, c, sheen, view, showScale, pid }) {
                 />
               );
             })}
-            {/* Vas pajangan kecil di sisi berlawanan */}
-            <ellipse
-              cx={i % 2 === 0 ? x0 + W - 22 : x0 + 22}
-              cy={sy - 11}
-              rx="6"
-              ry="8"
-              fill="#D4B895"
-              stroke="#8C6D4F"
-              strokeWidth="0.9"
-            />
+            {showVase && (
+              <ellipse
+                cx={i % 2 === 0 ? innerX + innerW - 12 : innerX + 12}
+                cy={sy - 10}
+                rx="5"
+                ry="7"
+                fill="#D4B895"
+                stroke="#8C6D4F"
+                strokeWidth="0.9"
+              />
+            )}
             <R x={x0 + 5} y={sy - 3} w={W - 10} h={4.5} fill={`url(#${pid}-wood)`} stroke={dark} sw={0.9} />
           </g>
         );
       })}
 
-      {/* Kabinet 2 Pintu di Bagian Bawah */}
       {[0, 1].map((i) => {
-        const dw = (W - 12) / 2;
-        const dx = x0 + 6 + i * dw;
+        const dw = innerW / 2;
+        const dx = innerX + i * dw;
         return (
           <g key={i}>
-            <R x={dx + 1} y={FLOOR - cabH} w={dw - 2} h={cabH - 4} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.1} rx={1.5} />
-            <circle cx={i === 0 ? dx + dw - 7 : dx + 7} cy={FLOOR - cabH / 2} r="2.4" fill="#C9A227" />
+            <R x={dx + 1} y={FLOOR - cabH} w={Math.max(2, dw - 2)} h={cabH - 4} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.1} rx={1.5} />
+            {dw >= 14 && <circle cx={i === 0 ? dx + dw - 6 : dx + 6} cy={FLOOR - cabH / 2} r="2.2" fill="#C9A227" />}
           </g>
         );
       })}
@@ -1806,35 +1725,31 @@ function DipanTingkatReplica({ dims, o, c, view, showScale, pid }) {
   const x0 = CX - W / 2;
   const top = FLOOR - H;
   const postW = Math.max(6.5, 8 * s);
-  const lowerY = FLOOR - 34 * s;
-  const upperY = FLOOR - 124 * s;
+  const lowerY = FLOOR - Math.min(34 * s, H * 0.22);
+  const upperY = Math.min(lowerY - 36 * s, top + Math.min(48 * s, H * 0.28));
   const dark = shade(c, -34);
 
   return (
     <g>
       {showScale && <HumanScale scale={s} x={Math.max(24, x0 - 28)} />}
       <Shadow w={W + 10} />
-      {/* 2 Tiang Sudut Tinggi */}
       <R x={x0} y={top} w={postW} h={H} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.2} rx={2} />
       <R x={x0 + W - postW} y={top} w={postW} h={H} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.2} rx={2} />
 
-      {/* Kasur & Rangka Tingkat Bawah */}
-      <R x={x0 + postW} y={lowerY - 18 * s} w={W - 2 * postW} h={18 * s} fill="#F4EFE5" stroke="#CFC6B3" sw={1.1} rx={3} />
-      <R x={x0 + postW + 6} y={lowerY - 26 * s} w={26 * s} h={9 * s} fill="#fff" stroke="#DED6C4" sw={0.9} rx={4} />
-      <R x={x0 + postW} y={lowerY} w={W - 2 * postW} h={13 * s} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.2} />
+      <R x={x0 + postW} y={lowerY - 16 * s} w={W - 2 * postW} h={16 * s} fill="#F4EFE5" stroke="#CFC6B3" sw={1.1} rx={3} />
+      <R x={x0 + postW + 6} y={lowerY - 23 * s} w={Math.min(26 * s, W * 0.25)} h={8 * s} fill="#fff" stroke="#DED6C4" sw={0.9} rx={4} />
+      <R x={x0 + postW} y={lowerY} w={W - 2 * postW} h={12 * s} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.2} />
 
-      {/* Kasur & Rangka Tingkat Atas + Pagar Pengaman */}
-      <R x={x0 + postW} y={upperY - 18 * s} w={W - 2 * postW} h={18 * s} fill="#F4EFE5" stroke="#CFC6B3" sw={1.1} rx={3} />
-      <R x={x0 + postW + 6} y={upperY - 26 * s} w={26 * s} h={9 * s} fill="#fff" stroke="#DED6C4" sw={0.9} rx={4} />
-      <R x={x0 + postW} y={upperY} w={W - 2 * postW} h={13 * s} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.2} />
-      {/* Pagar Pengaman Atas */}
-      <R x={x0 + postW} y={upperY - 34 * s} w={isSide ? W - 2 * postW : W * 0.66} h={6 * s} fill={`url(#${pid}-wood)`} stroke={dark} sw={1} rx={1.5} />
+      <R x={x0 + postW} y={upperY - 16 * s} w={W - 2 * postW} h={16 * s} fill="#F4EFE5" stroke="#CFC6B3" sw={1.1} rx={3} />
+      <R x={x0 + postW + 6} y={upperY - 23 * s} w={Math.min(26 * s, W * 0.25)} h={8 * s} fill="#fff" stroke="#DED6C4" sw={0.9} rx={4} />
+      <R x={x0 + postW} y={upperY} w={W - 2 * postW} h={12 * s} fill={`url(#${pid}-wood)`} stroke={dark} sw={1.2} />
+
+      <R x={x0 + postW} y={upperY - 30 * s} w={isSide ? W - 2 * postW : W * 0.66} h={5.5 * s} fill={`url(#${pid}-wood)`} stroke={dark} sw={1} rx={1.5} />
       {Array.from({ length: isSide ? 4 : 6 }).map((_, i) => {
         const rx = x0 + postW + 10 + i * ((isSide ? W - 2 * postW - 20 : W * 0.66 - 20) / (isSide ? 3 : 5));
-        return <line key={i} x1={rx} x2={rx} y1={upperY - 28 * s} y2={upperY} stroke={dark} strokeWidth="2.2" />;
+        return <line key={i} x1={rx} x2={rx} y1={upperY - 25 * s} y2={upperY} stroke={dark} strokeWidth="2.2" />;
       })}
 
-      {/* Tangga Kayu Jati Naik (tampak depan) */}
       {!isSide && (
         <g>
           <R x={x0 + W - postW - 34 * s} y={upperY} w={5} h={FLOOR - upperY} fill={shade(c, 8)} stroke={dark} sw={1} />
