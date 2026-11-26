@@ -33,14 +33,22 @@ export const customPortfolioSchema = Joi.object({
   name: Joi.string().trim().min(2).max(160).required(),
   typeKey: Joi.string().trim().max(40).default('lainnya'),
   category: Joi.string().trim().min(2).max(60).required(),
-  size: Joi.string().trim().min(2).max(120).required(),
-  finish: Joi.string().trim().min(2).max(100).required(),
-  city: Joi.string().trim().min(2).max(100).required(),
-  year: Joi.string().trim().max(10).default('2026'),
-  description: Joi.string().trim().min(5).max(1500).required(),
+  size: Joi.string().trim().allow('').max(120).default('Sesuai pesanan'),
+  finish: Joi.string().trim().allow('').max(100).default('Natural Jati (Doff)'),
+  city: Joi.string().trim().allow('').max(100).default('Kota Jambi'),
+  year: Joi.string().trim().max(10).default(String(new Date().getFullYear())),
+  description: Joi.string().trim().allow('').max(1500).default(''),
   image: Joi.string().allow('').optional(),
   images: Joi.array().items(photoItemSchema).min(1).max(6).required(),
-  preset: Joi.object().unknown(true).optional(),
+  preset: Joi.object().unknown(true).allow(null).optional(),
+  orderId: Joi.number().integer().allow(null).optional(),
+  orderCode: Joi.string().trim().allow('', null).max(40).optional(),
+  customerName: Joi.string().trim().allow('', null).max(120).optional(),
+  customerFeedback: Joi.string().trim().allow('', null).max(1000).optional(),
+  customerRating: Joi.number().integer().min(1).max(5).allow(null).optional(),
+  showFeedback: Joi.boolean().default(true),
+  price: Joi.number().min(0).allow(null).optional(),
+  isPublished: Joi.boolean().default(true),
 });
 
 const ID_PHONE_PATTERN = /^(?:\+?62|0)8[1-9][0-9\s-]{7,15}$/;
@@ -94,6 +102,8 @@ export const orderUpdateSchema = Joi.object({
   ownerNote: Joi.string().trim().allow('', null).max(500).optional(),
   madeBefore: Joi.boolean().optional(),
   madeNote: Joi.string().trim().allow('').max(500).optional(),
+  finishedPhotos: Joi.array().items(photoItemSchema).max(6).optional(),
+  publishedPortfolioId: Joi.number().integer().allow(null).optional(),
 }).min(1);
 
 export const saleCreateSchema = Joi.object({

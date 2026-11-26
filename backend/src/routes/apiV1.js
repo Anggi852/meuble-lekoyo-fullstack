@@ -63,14 +63,19 @@ router.get('/store', (_req, res) => {
 // Mengambil seluruh data publik dalam 1 request awal untuk mempercepat muat Front-End
 router.get(
   '/bootstrap',
-  asyncHandler(async (_req, res) => {
-    const [products, customPortfolio, faqs, testimonials, metrics] = await Promise.all([
+  optionalAuth,
+  asyncHandler(async (req, res) => {
+    const isOwner = req.user?.role === 'owner';
+    const [products, rawCustomPortfolio, faqs, testimonials, metrics] = await Promise.all([
       db.getProducts(),
       db.getCustomPortfolio(),
       db.getFaqs(),
       db.getTestimonials(),
       db.getMetrics(),
     ]);
+    const customPortfolio = isOwner
+      ? rawCustomPortfolio
+      : rawCustomPortfolio.filter((c) => c.isPublished !== false);
     res.json({
       success: true,
       data: { products, customPortfolio, faqs, testimonials, metrics, store: STORE },
@@ -308,8 +313,13 @@ router.delete(
 /* -------------------- CUSTOM PORTFOLIO (PERNAH DICUSTOM) -------------------- */
 router.get(
   '/custom-portfolio',
+  optionalAuth,
   asyncHandler(async (req, res) => {
+    const isOwner = req.user?.role === 'owner';
     let list = await db.getCustomPortfolio();
+    if (!isOwner) {
+      list = list.filter((c) => c.isPublished !== false);
+    }
     if (req.query.category && req.query.category !== 'Semua') {
       list = list.filter((c) => c.category.toLowerCase() === String(req.query.category).toLowerCase());
     }
@@ -621,7 +631,19 @@ router.post(
       source: 'customer',
       showOnHome: true,
     });
-
+    // Jika pesanan custom ini sudah dipublikasikan ke galeri, ikut perbarui feedback & rating-nya
+    try {
+      const linkedPortfolio = await db.getCustomPortfolioByOrderId(order.id);
+      if (linkedPortfolio) {
+        await db.updateCustomPortfolio(linkedPortfolio.id, {
+          customerFeedback: text,
+          customerRating: rating,
+          customerName: linkedPortfolio.customerName || order.name || req.user.name || 'Pelanggan',
+        });
+      }
+    } catch {
+      /* abaikan bila gagal sinkronisasi */
+    }
     await logActivitySafe({
       userEmail: req.user.email,
       userName: req.user.name,

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ShoppingBag,
   MapPin,
@@ -14,11 +14,18 @@ import {
   Image as ImageIcon,
   ZoomIn,
   X,
+  Camera,
+  Star,
+  Globe,
+  EyeOff,
+  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useApp } from '../../context/AppContext';
 import { PageHeader, RowActions, confirmDelete } from '../../components/admin/ui';
+import PhotoUploader from '../../components/admin/PhotoUploader';
 import FurniturePreview from '../../components/FurniturePreview';
+import { CUSTOM_CATEGORIES, CUSTOM_TYPE_KEYS, TYPES } from '../../data/custom';
 import { formatRupiah } from '../../utils/format';
 import { customKey } from '../../utils/sales';
 import { buildCustomerWhatsAppReplyLink } from '../../utils/phone';
@@ -32,6 +39,7 @@ const statuses = [
   'Dibatalkan',
 ];
 
+const CATEGORY_OPTIONS = CUSTOM_CATEGORIES.filter((c) => c !== 'Semua');
 const normalizeStatus = (s) => (s === 'Baru' ? 'Menunggu Harga Owner' : s);
 
 const tone = {
@@ -43,6 +51,19 @@ const tone = {
   Dibatalkan: 'bg-red-50 text-red-700',
 };
 
+function guessCategoryForOrder(order) {
+  const fromType = order?.custom?.design?.type && TYPES[order.custom.design.type]?.label;
+  if (fromType && CATEGORY_OPTIONS.includes(fromType)) return fromType;
+  const fromLabel = order?.custom?.categoryLabel;
+  if (fromLabel && CATEGORY_OPTIONS.includes(fromLabel)) return fromLabel;
+  return 'Bebas Request';
+}
+
+function guessCityFromAddress(address = '') {
+  const parts = String(address).split(',').map((s) => s.trim()).filter(Boolean);
+  return parts[parts.length - 1] || 'Kota Jambi';
+}
+
 function CustomDesignPanel({ custom, onOpenPhoto }) {
   const [view, setView] = useState('front');
   const [showScale, setShowScale] = useState(true);
@@ -50,8 +71,6 @@ function CustomDesignPanel({ custom, onOpenPhoto }) {
   const design = custom?.design;
   const photos = Array.isArray(custom?.referencePhotos) ? custom.referencePhotos : [];
   if (!design && photos.length === 0) return null;
-
-  const secondViewLabel = design?.type === 'lemari' ? 'Tata Dalam' : 'Tampak Samping';
 
   return (
     <div className="mt-3 grid gap-3 lg:grid-cols-2">
@@ -75,8 +94,19 @@ function CustomDesignPanel({ custom, onOpenPhoto }) {
                   view === 'side' ? 'bg-gold text-espresso' : 'text-cream/75 hover:bg-white/10'
                 }`}
               >
-                {secondViewLabel}
+                Tampak Samping
               </button>
+              {design.type === 'lemari' && (
+                <button
+                  type="button"
+                  onClick={() => setView('inside')}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                    view === 'inside' ? 'bg-gold text-espresso' : 'text-cream/75 hover:bg-white/10'
+                  }`}
+                >
+                  Tata Dalam
+                </button>
+              )}
             </div>
             <button
               type="button"
@@ -136,6 +166,303 @@ function CustomDesignPanel({ custom, onOpenPhoto }) {
           <p className="mt-2 text-[11px] text-muted">
             Klik gambar untuk melihat sketsa/foto referensi dalam ukuran penuh.
           </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FinishedOrderPanel({
+  order,
+  review,
+  linkedPortfolio,
+  onSaveFinishedPhotos,
+  onPublishOrder,
+  onTogglePublish,
+}) {
+  const isCustom = Boolean(order.custom);
+  const [photos, setPhotos] = useState(
+    Array.isArray(order.finishedPhotos) && order.finishedPhotos.length > 0
+      ? order.finishedPhotos
+      : linkedPortfolio?.images || [],
+  );
+  const [title, setTitle] = useState(
+    linkedPortfolio?.name || order.custom?.title || order.product,
+  );
+  const [category, setCategory] = useState(
+    linkedPortfolio?.category || guessCategoryForOrder(order),
+  );
+  const [city, setCity] = useState(
+    linkedPortfolio?.city || review?.city || guessCityFromAddress(order.address),
+  );
+  const [description, setDescription] = useState(
+    linkedPortfolio?.description ||
+      [
+        order.custom?.options,
+        order.custom?.note ? `Catatan: ${order.custom.note}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ') ||
+      `Hasil pengerjaan custom ${order.custom?.title || order.product} kayu jati solid.`,
+  );
+  const [showFeedback, setShowFeedback] = useState(
+    linkedPortfolio ? linkedPortfolio.showFeedback !== false : true,
+  );
+  const [savingPhotos, setSavingPhotos] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+
+  useEffect(() => {
+    if (Array.isArray(order.finishedPhotos) && order.finishedPhotos.length > 0) {
+      setPhotos(order.finishedPhotos);
+    }
+  }, [order.finishedPhotos]);
+
+  const isPublished = Boolean(linkedPortfolio && linkedPortfolio.isPublished !== false);
+
+  const handleSavePhotosOnly = async () => {
+    if (photos.length === 0) {
+      toast.error('Upload minimal 1 foto produk yang sudah jadi.');
+      return;
+    }
+    setSavingPhotos(true);
+    try {
+      await onSaveFinishedPhotos(order.id, { finishedPhotos: photos });
+      toast.success('Foto produk hasil jadi disimpan & tampil di Pesanan Saya pelanggan.');
+    } finally {
+      setSavingPhotos(false);
+    }
+  };
+
+  const handleApproveAndPublish = async () => {
+    if (photos.length === 0) {
+      toast.error('Upload minimal 1 foto produk yang sudah jadi sebelum mempublikasikan.');
+      return;
+    }
+    setPublishing(true);
+    try {
+      const typeKey =
+        order.custom?.design?.type ||
+        CUSTOM_TYPE_KEYS.find((k) => TYPES[k].label === category) ||
+        'lainnya';
+      const preset = order.custom?.design
+        ? {
+            dims: order.custom.design.dims,
+            opts: order.custom.design.opts,
+            finish: order.custom.design.finish,
+          }
+        : undefined;
+
+      await onPublishOrder(order, {
+        name: title.trim() || order.custom?.title || order.product,
+        typeKey,
+        category,
+        size: order.custom?.size || 'Sesuai pesanan',
+        finish: order.custom?.finish || 'Natural Jati (Doff)',
+        city: city.trim() || 'Kota Jambi',
+        year: String(new Date().getFullYear()),
+        description: description.trim(),
+        images: photos,
+        image: photos[0]?.url || '',
+        preset,
+        customerName: order.name,
+        customerFeedback: review?.text || linkedPortfolio?.customerFeedback || '',
+        customerRating: review?.rating || linkedPortfolio?.customerRating || null,
+        showFeedback,
+        price: order.finalPrice ?? order.total ?? null,
+        isPublished: true,
+      });
+      toast.success(
+        isPublished
+          ? 'Publikasi Karya Pernah Dicustom berhasil diperbarui!'
+          : 'Disetujui! Karya & foto hasil jadi kini tampil di Karya Pernah Dicustom.',
+      );
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handleUnpublish = async () => {
+    if (!linkedPortfolio) return;
+    setPublishing(true);
+    try {
+      await onTogglePublish(linkedPortfolio, false);
+      toast.info('Karya disembunyikan dari publik (tetap tersimpan sebagai draft di Dashboard).');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 rounded-2xl border border-emerald-300/70 bg-emerald-50/45 p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200/80 pb-3">
+        <div>
+          <p className="flex items-center gap-1.5 text-sm font-bold text-espresso">
+            <Camera size={16} className="text-emerald-700" />
+            Foto Produk Hasil Jadi {isCustom && '& Persetujuan Publikasi Karya Custom'}
+          </p>
+          <p className="mt-0.5 text-xs text-muted">
+            Upload foto barang yang sudah selesai dibuat agar tampil ke pelanggan{isCustom ? ' dan bisa disetujui tayang di Karya Pernah Dicustom' : ''}.
+          </p>
+        </div>
+
+        {isCustom && (
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold ${
+              isPublished
+                ? 'bg-emerald-600 text-white'
+                : linkedPortfolio
+                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                  : 'bg-white text-muted border border-line'
+            }`}
+          >
+            {isPublished ? (
+              <>
+                <Globe size={12} /> Tayang di Karya Custom
+              </>
+            ) : linkedPortfolio ? (
+              <>
+                <EyeOff size={12} /> Disembunyikan Owner
+              </>
+            ) : (
+              'Belum Dipublikasikan'
+            )}
+          </span>
+        )}
+      </div>
+
+      {/* Upload Foto Barang Jadi */}
+      <div className="mt-3.5">
+        <PhotoUploader value={photos} onChange={setPhotos} max={4} />
+        <div className="mt-2.5 flex justify-end">
+          <button
+            type="button"
+            onClick={handleSavePhotosOnly}
+            disabled={savingPhotos || photos.length === 0}
+            className="btn-soft !min-h-[38px] !px-4 text-xs disabled:opacity-55"
+          >
+            {savingPhotos ? 'Menyimpan foto...' : 'Simpan Foto Hasil Jadi'}
+          </button>
+        </div>
+      </div>
+
+      {/* Feedback Pemesan */}
+      <div className="mt-4 rounded-xl border border-gold/30 bg-white p-3.5">
+        <p className="text-xs font-bold uppercase tracking-wider text-gold-dark">
+          Pemesan &amp; Feedback Pelanggan
+        </p>
+        {review ? (
+          <div className="mt-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-espresso">
+                {review.name || order.name}{' '}
+                <span className="font-normal text-muted">· {review.city || city}</span>
+              </p>
+              <span className="flex items-center gap-0.5 text-gold">
+                {[...Array(5)].map((_, k) => (
+                  <Star
+                    key={k}
+                    size={13}
+                    fill={k < (Number(review.rating) || 5) ? 'currentColor' : 'none'}
+                    className={k < (Number(review.rating) || 5) ? 'text-gold' : 'text-line'}
+                  />
+                ))}
+              </span>
+            </div>
+            <p className="mt-1 text-sm italic text-bark">"{review.text}"</p>
+          </div>
+        ) : (
+          <p className="mt-1 text-xs text-muted">
+            <strong>{order.name}</strong> belum mengirim ulasan. Jika nanti pelanggan mengirim ulasan di halaman <em>Pesanan Saya</em>, feedback akan otomatis tersambung ke karya ini.
+          </p>
+        )}
+      </div>
+
+      {/* Kontrol Persetujuan Publikasi Khusus Custom */}
+      {isCustom && (
+        <div className="mt-4 space-y-3 rounded-xl border border-gold/35 bg-white p-3.5">
+          <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-teak">
+            <Sparkles size={13} className="text-gold-dark" /> Pengaturan Tampilan di Karya Pernah Dicustom
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-muted">Nama Karya di Galeri</label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="field !py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted">Jenis Furnitur</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="field !py-2 text-sm"
+              >
+                {CATEGORY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted">Kota Pemesan</label>
+              <input
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                className="field !py-2 text-sm"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-muted">Deskripsi Singkat Karya</label>
+              <input
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="field !py-2 text-sm"
+              />
+            </div>
+          </div>
+
+          <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-bark">
+            <input
+              type="checkbox"
+              checked={showFeedback}
+              onChange={(e) => setShowFeedback(e.target.checked)}
+              className="h-4 w-4 accent-teak"
+            />
+            Tampilkan nama pemesan &amp; feedback pelanggan di kartu Karya Pernah Dicustom
+          </label>
+
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line/70 pt-3">
+            {isPublished && (
+              <button
+                type="button"
+                onClick={handleUnpublish}
+                disabled={publishing}
+                className="btn-soft !min-h-[38px] !px-3.5 text-xs text-red-700"
+              >
+                <EyeOff size={14} /> Tarik dari Publikasi
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleApproveAndPublish}
+              disabled={publishing || photos.length === 0}
+              className="btn-primary !min-h-[38px] !px-4 text-xs disabled:opacity-55"
+            >
+              <Globe size={14} className="text-gold-light" />
+              {publishing
+                ? 'Memproses...'
+                : isPublished
+                  ? 'Perbarui Publikasi'
+                  : 'Setujui & Publikasikan ke Karya Custom'}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -232,7 +559,16 @@ function OwnerPricingBox({ order, onSave }) {
 }
 
 export default function Orders() {
-  const { orders, updateOrderStatus, updateOrder, removeOrder } = useApp();
+  const {
+    orders,
+    testimonials,
+    customPortfolio,
+    updateOrderStatus,
+    updateOrder,
+    removeOrder,
+    publishCustomOrder,
+    togglePortfolioPublish,
+  } = useApp();
   const [filter, setFilter] = useState('Semua');
   const [lightboxPhoto, setLightboxPhoto] = useState(null);
 
@@ -245,7 +581,7 @@ export default function Orders() {
     <div>
       <PageHeader
         title="Pesanan masuk"
-        desc="Setiap pengajuan masuk dengan kode unik dan menunggu penetapan harga dari owner. Omzet & laporan penjualan hanya menghitung pesanan berstatus Selesai."
+        desc="Setiap pengajuan masuk dengan kode unik dan menunggu penetapan harga dari owner. Setelah pesanan berstatus Selesai, unggah foto produk jadi dan setujui publikasinya ke Karya Pernah Dicustom."
       />
 
       <div className="mb-5 flex items-start gap-3 rounded-2xl border border-sage/30 bg-white/95 p-4 shadow-soft">
@@ -301,6 +637,11 @@ export default function Orders() {
             const sameDone = same.filter((x) => x.status === 'Selesai' || x.madeBefore).length;
             const last = same[0];
             const noteFromPast = same.find((x) => x.madeNote)?.madeNote;
+            const orderReview = testimonials.find((t) => Number(t.orderId) === Number(o.id));
+            const linkedPortfolio =
+              customPortfolio.find((c) => Number(c.id) === Number(o.publishedPortfolioId)) ||
+              customPortfolio.find((c) => Number(c.orderId) === Number(o.id)) ||
+              null;
 
             return (
               <article key={o.id} className="luxury-panel p-4 sm:p-6">
@@ -351,7 +692,6 @@ export default function Orders() {
                   </div>
                 )}
 
-                {/* Pratinjau Replika Desain + Galeri Foto/Sketsa Referensi */}
                 {o.custom && (
                   <CustomDesignPanel custom={o.custom} onOpenPhoto={setLightboxPhoto} />
                 )}
@@ -436,6 +776,18 @@ export default function Orders() {
                 {/* Kotak Penetapan Harga Final Owner */}
                 <OwnerPricingBox order={o} onSave={updateOrder} />
 
+                {/* Panel Foto Hasil Jadi & Persetujuan Publikasi saat Pesanan Selesai */}
+                {displayStatus === 'Selesai' && (
+                  <FinishedOrderPanel
+                    order={o}
+                    review={orderReview}
+                    linkedPortfolio={linkedPortfolio}
+                    onSaveFinishedPhotos={updateOrder}
+                    onPublishOrder={publishCustomOrder}
+                    onTogglePublish={togglePortfolioPublish}
+                  />
+                )}
+
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
                   <div className="flex flex-wrap items-center gap-2.5">
                     <label className="flex items-center gap-2 text-sm font-medium">
@@ -483,7 +835,6 @@ export default function Orders() {
         </div>
       )}
 
-      {/* Lightbox Perbesar Foto/Sketsa Referensi */}
       {lightboxPhoto && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-espresso/85 p-4 backdrop-blur-sm"

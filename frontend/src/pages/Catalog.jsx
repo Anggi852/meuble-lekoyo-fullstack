@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
 import { History, Layers, Package, Search, SearchX, Sparkles } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import ProductCard from '../components/ProductCard';
 import CustomPortfolioCard from '../components/CustomPortfolioCard';
+import OrderModal from '../components/OrderModal';
 import { CUSTOM_CATEGORIES, CUSTOM_TYPE_KEYS, TYPES } from '../data/custom';
 
 // Menyamakan label kategori antara produk katalog reguler & karya pernah dicustom
@@ -15,7 +17,7 @@ function normalizeCategory(cat) {
 }
 
 export default function Catalog() {
-  const { products, customPortfolio, openKoyoWith } = useApp();
+  const { products, customPortfolio, openKoyoWith, isOwner } = useApp();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -24,6 +26,12 @@ export default function Catalog() {
   const tab = searchParams.get('tab') || 'all'; // 'all' | 'catalog' | 'custom'
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('default');
+  const [quickOrderCustom, setQuickOrderCustom] = useState(null);
+
+  const publicCustomPortfolio = useMemo(
+    () => customPortfolio.filter((item) => item.isPublished !== false),
+    [customPortfolio],
+  );
 
   const updateParams = (nextTab, nextCat) => {
     const params = {};
@@ -54,7 +62,7 @@ export default function Catalog() {
 
   const filteredCustom = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return customPortfolio.filter((item) => {
+    return publicCustomPortfolio.filter((item) => {
       const cCat = normalizeCategory(item.category || TYPES[item.typeKey]?.label);
       const matchCategory = category === 'Semua' || cCat === category;
       const matchQuery =
@@ -65,7 +73,7 @@ export default function Catalog() {
         cCat.toLowerCase().includes(q);
       return matchCategory && matchQuery;
     });
-  }, [customPortfolio, category, query]);
+  }, [publicCustomPortfolio, category, query]);
 
   // Kelompokkan "Yang Pernah Dicustom" menurut jenis-jenisnya agar rapi
   const groupedCustom = useMemo(() => {
@@ -125,9 +133,9 @@ export default function Catalog() {
       {/* Tab Penyatuan: Semua | Katalog Toko | Pernah Dicustom */}
       <div className="mt-6 flex flex-wrap gap-2" role="tablist" aria-label="Pilih sumber koleksi">
         {[
-          { key: 'all', label: 'Semua Koleksi', count: products.length + customPortfolio.length, icon: Layers },
+          { key: 'all', label: 'Semua Koleksi', count: products.length + publicCustomPortfolio.length, icon: Layers },
           { key: 'catalog', label: 'Katalog Toko', count: products.length, icon: Package },
-          { key: 'custom', label: 'Pernah Dicustom', count: customPortfolio.length, icon: History },
+          { key: 'custom', label: 'Pernah Dicustom', count: publicCustomPortfolio.length, icon: History },
         ].map((item) => {
           const active = tab === item.key;
           return (
@@ -276,7 +284,7 @@ export default function Catalog() {
                     Yang <span className="italic text-teak">pernah dicustom</span> sebelumnya
                   </h2>
                   <p className="mt-1 text-sm text-muted">
-                    Dipisahkan menurut jenisnya. Klik foto untuk detail multi-sudut, atau klik <strong>"Pesan Serupa"</strong> untuk langsung membukanya di Studio Custom.
+                    Dipisahkan menurut jenisnya. Klik <strong>"Pesan Langsung"</strong> untuk memesan model yang sama tanpa mengatur ulang, atau klik ikon pengaturan untuk ubah ukuran di Studio Custom.
                   </p>
                 </div>
                 <span className="rounded-full border border-gold/35 bg-sand/70 px-3.5 py-1 text-xs font-bold text-teak">
@@ -309,7 +317,12 @@ export default function Catalog() {
 
                     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                       {group.items.map((item) => (
-                        <CustomPortfolioCard key={item.id} item={item} onUseAsBase={openCustomWithPreset} />
+                        <CustomPortfolioCard
+                          key={item.id}
+                          item={item}
+                          onUseAsBase={openCustomWithPreset}
+                          onQuickOrder={(it) => setQuickOrderCustom(it)}
+                        />
                       ))}
                     </div>
                   </div>
@@ -319,6 +332,12 @@ export default function Catalog() {
           )}
         </div>
       )}
+
+      <AnimatePresence>
+        {quickOrderCustom && !isOwner && (
+          <OrderModal customItem={quickOrderCustom} onClose={() => setQuickOrderCustom(null)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

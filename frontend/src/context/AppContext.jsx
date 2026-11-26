@@ -248,8 +248,11 @@ export function AppProvider({ children }) {
   }, [user?.email, loadMyWishlist, loadMyActivities]);
 
   useEffect(() => {
-    if (isLoggedIn) loadAdminData();
-  }, [isLoggedIn, loadAdminData]);
+    if (isLoggedIn) {
+      loadAdminData();
+      loadPublicData();
+    }
+  }, [isLoggedIn, loadAdminData, loadPublicData]);
 
   const loginAdmin = async (password) => {
     const res = await api.login(password);
@@ -421,9 +424,42 @@ export function AppProvider({ children }) {
     try {
       await api.deleteCustomPortfolio(id);
       setCustomPortfolio((l) => l.filter((x) => x.id !== id));
+      setOrders((prev) =>
+        prev.map((o) =>
+          Number(o.publishedPortfolioId) === Number(id) ? { ...o, publishedPortfolioId: null } : o,
+        ),
+      );
     } catch (err) {
       toast.error(extractApiError(err, 'Gagal menghapus karya custom.'));
     }
+  };
+
+  const publishCustomOrder = async (order, portfolioData) => {
+    const existing =
+      customPortfolio.find((c) => Number(c.id) === Number(order.publishedPortfolioId)) ||
+      customPortfolio.find((c) => Number(c.orderId) === Number(order.id));
+
+    const payload = {
+      ...(existing ? { id: existing.id } : {}),
+      ...portfolioData,
+      orderId: order.id,
+      orderCode: order.orderCode || '',
+      isPublished: portfolioData.isPublished !== false,
+    };
+
+    const saved = await saveCustomPortfolio(payload);
+    await updateOrder(order.id, {
+      finishedPhotos: saved.images,
+      publishedPortfolioId: saved.id,
+    });
+    return saved;
+  };
+
+  const togglePortfolioPublish = async (item, nextPublished) => {
+    return saveCustomPortfolio({
+      ...item,
+      isPublished: Boolean(nextPublished),
+    });
   };
 
   /* -------------------- CRUD FAQ & TESTIMONI -------------------- */
@@ -640,6 +676,8 @@ export function AppProvider({ children }) {
     customPortfolio,
     saveCustomPortfolio,
     removeCustomPortfolio,
+    publishCustomOrder,
+    togglePortfolioPublish,
     chatLogs,
     addChatLog,
     sendKoyoMessage,

@@ -45,6 +45,16 @@ ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS order_id BIGINT;
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS user_email TEXT NOT NULL DEFAULT '';
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'owner';
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS show_on_home BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS finished_photos JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS published_portfolio_id BIGINT;
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_id BIGINT;
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_feedback TEXT NOT NULL DEFAULT '';
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_rating INTEGER;
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS show_feedback BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS price INTEGER;
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT TRUE;
 `;
 function normalizeImages(item) {
   const raw = Array.isArray(item.images) && item.images.length > 0
@@ -197,10 +207,41 @@ function createJsonDriver() {
       return true;
     },
 
-    async getCustomPortfolio() { return state.customPortfolio; },
-    async getCustomPortfolioById(id) { return state.customPortfolio.find((c) => c.id === Number(id)) || null; },
+    async getCustomPortfolio() {
+      return state.customPortfolio.map((c) => ({
+        orderId: null,
+        orderCode: '',
+        customerName: '',
+        customerFeedback: '',
+        customerRating: null,
+        showFeedback: true,
+        price: null,
+        isPublished: true,
+        ...c,
+      }));
+    },
+    async getCustomPortfolioById(id) {
+      const found = state.customPortfolio.find((c) => c.id === Number(id));
+      return found ? { isPublished: true, showFeedback: true, ...found } : null;
+    },
+    async getCustomPortfolioByOrderId(orderId) {
+      const found = state.customPortfolio.find((c) => Number(c.orderId) === Number(orderId));
+      return found ? { isPublished: true, showFeedback: true, ...found } : null;
+    },
     async createCustomPortfolio(data) {
-      const item = { id: Date.now(), ...data, ...normalizeImages(data) };
+      const item = {
+        id: Date.now(),
+        orderId: null,
+        orderCode: '',
+        customerName: '',
+        customerFeedback: '',
+        customerRating: null,
+        showFeedback: true,
+        price: null,
+        isPublished: true,
+        ...data,
+        ...normalizeImages(data),
+      };
       state.customPortfolio = [item, ...state.customPortfolio];
       persist();
       return item;
@@ -216,9 +257,13 @@ function createJsonDriver() {
       return normalized;
     },
     async deleteCustomPortfolio(id) {
+      const numId = Number(id);
       const before = state.customPortfolio.length;
-      state.customPortfolio = state.customPortfolio.filter((c) => c.id !== Number(id));
+      state.customPortfolio = state.customPortfolio.filter((c) => c.id !== numId);
       if (state.customPortfolio.length === before) return false;
+      state.orders = state.orders.map((o) =>
+        Number(o.publishedPortfolioId) === numId ? { ...o, publishedPortfolioId: null } : o,
+      );
       persist();
       return true;
     },
@@ -246,6 +291,8 @@ function createJsonDriver() {
         status: data.status || 'Menunggu Harga Owner',
         madeBefore: false,
         madeNote: '',
+        finishedPhotos: Array.isArray(data.finishedPhotos) ? data.finishedPhotos : [],
+        publishedPortfolioId: data.publishedPortfolioId ?? null,
         createdAt: new Date().toISOString(),
         ...data,
         total: data.finalPrice != null ? Number(data.finalPrice) : estimated,
@@ -492,6 +539,14 @@ function createPostgresDriver(connectionString) {
     image: r.image,
     images: r.images || [],
     preset: r.preset || undefined,
+    orderId: r.order_id === null || r.order_id === undefined ? null : Number(r.order_id),
+    orderCode: r.order_code || '',
+    customerName: r.customer_name || '',
+    customerFeedback: r.customer_feedback || '',
+    customerRating: r.customer_rating === null || r.customer_rating === undefined ? null : Number(r.customer_rating),
+    showFeedback: r.show_feedback === undefined ? true : Boolean(r.show_feedback),
+    price: r.price === null || r.price === undefined ? null : Number(r.price),
+    isPublished: r.is_published === undefined ? true : Boolean(r.is_published),
   });
 
   const mapOrder = (r) => ({
@@ -515,6 +570,11 @@ function createPostgresDriver(connectionString) {
     custom: r.custom || undefined,
     madeBefore: Boolean(r.made_before),
     madeNote: r.made_note || '',
+    finishedPhotos: Array.isArray(r.finished_photos) ? r.finished_photos : [],
+    publishedPortfolioId:
+      r.published_portfolio_id === null || r.published_portfolio_id === undefined
+        ? null
+        : Number(r.published_portfolio_id),
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
   });
 
@@ -637,13 +697,44 @@ function createPostgresDriver(connectionString) {
       const { rows } = await pool.query('SELECT * FROM custom_portfolio WHERE id = $1', [Number(id)]);
       return rows[0] ? mapPortfolio(rows[0]) : null;
     },
+    async getCustomPortfolioByOrderId(orderId) {
+      const { rows } = await pool.query(
+        'SELECT * FROM custom_portfolio WHERE order_id = $1 LIMIT 1',
+        [Number(orderId)],
+      );
+      return rows[0] ? mapPortfolio(rows[0]) : null;
+    },
     async createCustomPortfolio(data) {
       const id = Date.now();
       const norm = normalizeImages(data);
       const { rows } = await pool.query(
-        `INSERT INTO custom_portfolio (id, name, type_key, category, size, finish, city, year, description, image, images, preset)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-        [id, data.name, data.typeKey || 'lainnya', data.category, data.size || '', data.finish || 'Natural Jati (Doff)', data.city || 'Kota Jambi', data.year || '2026', data.description || '', norm.image, JSON.stringify(norm.images), data.preset ? JSON.stringify(data.preset) : null],
+        `INSERT INTO custom_portfolio (
+           id, name, type_key, category, size, finish, city, year, description, image, images, preset,
+           order_id, order_code, customer_name, customer_feedback, customer_rating, show_feedback, price, is_published
+         )
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+        [
+          id,
+          data.name,
+          data.typeKey || 'lainnya',
+          data.category,
+          data.size || '',
+          data.finish || 'Natural Jati (Doff)',
+          data.city || 'Kota Jambi',
+          data.year || String(new Date().getFullYear()),
+          data.description || '',
+          norm.image,
+          JSON.stringify(norm.images),
+          data.preset ? JSON.stringify(data.preset) : null,
+          data.orderId ?? null,
+          data.orderCode || '',
+          data.customerName || '',
+          data.customerFeedback || '',
+          data.customerRating ?? null,
+          data.showFeedback === undefined ? true : Boolean(data.showFeedback),
+          data.price ?? null,
+          data.isPublished === undefined ? true : Boolean(data.isPublished),
+        ],
       );
       return mapPortfolio(rows[0]);
     },
@@ -653,14 +744,46 @@ function createPostgresDriver(connectionString) {
       const m = { ...existing, ...data };
       const norm = normalizeImages(m);
       const { rows } = await pool.query(
-        `UPDATE custom_portfolio SET name=$2, type_key=$3, category=$4, size=$5, finish=$6, city=$7, year=$8, description=$9, image=$10, images=$11, preset=$12
+        `UPDATE custom_portfolio
+         SET name=$2, type_key=$3, category=$4, size=$5, finish=$6, city=$7, year=$8,
+             description=$9, image=$10, images=$11, preset=$12,
+             order_id=$13, order_code=$14, customer_name=$15, customer_feedback=$16,
+             customer_rating=$17, show_feedback=$18, price=$19, is_published=$20
          WHERE id=$1 RETURNING *`,
-        [Number(id), m.name, m.typeKey || 'lainnya', m.category, m.size || '', m.finish || '', m.city || '', m.year || '', m.description || '', norm.image, JSON.stringify(norm.images), m.preset ? JSON.stringify(m.preset) : null],
+        [
+          Number(id),
+          m.name,
+          m.typeKey || 'lainnya',
+          m.category,
+          m.size || '',
+          m.finish || '',
+          m.city || '',
+          m.year || '',
+          m.description || '',
+          norm.image,
+          JSON.stringify(norm.images),
+          m.preset ? JSON.stringify(m.preset) : null,
+          m.orderId ?? null,
+          m.orderCode || '',
+          m.customerName || '',
+          m.customerFeedback || '',
+          m.customerRating ?? null,
+          m.showFeedback === undefined ? true : Boolean(m.showFeedback),
+          m.price ?? null,
+          m.isPublished === undefined ? true : Boolean(m.isPublished),
+        ],
       );
       return mapPortfolio(rows[0]);
     },
     async deleteCustomPortfolio(id) {
-      const res = await pool.query('DELETE FROM custom_portfolio WHERE id = $1', [Number(id)]);
+      const numId = Number(id);
+      const res = await pool.query('DELETE FROM custom_portfolio WHERE id = $1', [numId]);
+      if (res.rowCount > 0) {
+        await pool.query(
+          'UPDATE orders SET published_portfolio_id = NULL WHERE published_portfolio_id = $1',
+          [numId],
+        );
+      }
       return res.rowCount > 0;
     },
 
@@ -719,9 +842,17 @@ function createPostgresDriver(connectionString) {
         patch.finalPrice !== undefined && patch.finalPrice !== null
           ? Number(patch.finalPrice)
           : next.total;
+      const nextFinishedPhotos = Array.isArray(patch.finishedPhotos)
+        ? patch.finishedPhotos
+        : o.finishedPhotos || [];
+      const nextPublishedPortfolioId =
+        patch.publishedPortfolioId !== undefined
+          ? patch.publishedPortfolioId
+          : o.publishedPortfolioId ?? null;
       const { rows } = await pool.query(
         `UPDATE orders
-         SET status=$2, made_before=$3, made_note=$4, final_price=$5, owner_note=$6, total=$7
+         SET status=$2, made_before=$3, made_note=$4, final_price=$5, owner_note=$6, total=$7,
+             finished_photos=$8, published_portfolio_id=$9
          WHERE id=$1 RETURNING *`,
         [
           Number(id),
@@ -731,10 +862,12 @@ function createPostgresDriver(connectionString) {
           next.finalPrice ?? null,
           next.ownerNote || '',
           nextTotal,
+          JSON.stringify(nextFinishedPhotos),
+          nextPublishedPortfolioId,
         ],
       );
       return mapOrder(rows[0]);
-    },
+    },  
     async deleteOrder(id) {
       const res = await pool.query('DELETE FROM orders WHERE id = $1', [Number(id)]);
       return res.rowCount > 0;

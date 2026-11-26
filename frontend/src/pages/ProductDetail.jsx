@@ -59,11 +59,14 @@ export default function ProductDetail() {
   const isCustomItem = String(id || '').startsWith('custom-');
   const numericId = parseInt(String(id || '').replace(/^custom-/, ''), 10);
 
-  const customItem = isCustomItem ? customPortfolio.find((c) => c.id === numericId) : null;
+  const customItem = isCustomItem
+    ? customPortfolio.find((c) => c.id === numericId && (c.isPublished !== false || isOwner))
+    : null;
   const product = !isCustomItem ? products.find((p) => p.id === numericId) : null;
   const activeItem = customItem || product;
 
   const [showOrder, setShowOrder] = useState(false);
+  const [quickOrderCustom, setQuickOrderCustom] = useState(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const [zoomOpen, setZoomOpen] = useState(false);
   const itemKey = activeItem ? `${isCustomItem ? 'c' : 'p'}-${activeItem.id}` : null;
@@ -114,12 +117,30 @@ export default function ProductDetail() {
         ).toFixed(1)
       : null;
 
+  const customReview =
+    isCustomItem && customItem.orderId
+      ? (testimonials || []).find((t) => Number(t.orderId) === Number(customItem.orderId))
+      : null;
+  const customFeedbackText =
+    isCustomItem && customItem.showFeedback !== false
+      ? customItem.customerFeedback || customReview?.text || ''
+      : '';
+  const customFeedbackRating =
+    isCustomItem ? customItem.customerRating || customReview?.rating || null : null;
+  const customReviewerName =
+    isCustomItem ? customItem.customerName || customReview?.name || '' : '';
+
   const currentNormCat = normalizeCat(activeItem.category);
   const relatedProducts = products
     .filter((p) => normalizeCat(p.category) === currentNormCat && (isCustomItem || p.id !== product.id))
     .slice(0, 4);
   const relatedCustom = customPortfolio
-    .filter((c) => normalizeCat(c.category) === currentNormCat && (!isCustomItem || c.id !== customItem.id))
+    .filter(
+      (c) =>
+        c.isPublished !== false &&
+        normalizeCat(c.category) === currentNormCat &&
+        (!isCustomItem || c.id !== customItem.id),
+    )
     .slice(0, 4);
 
   const specs = isCustomItem
@@ -182,7 +203,7 @@ export default function ProductDetail() {
             <div className="absolute left-3.5 top-3.5 flex flex-wrap gap-1.5">
               {isCustomItem && (
                 <span className="rounded-full border border-gold/50 bg-gold px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-espresso shadow-soft">
-                  Pernah Dicustom
+                  Hasil Jadi Custom
                 </span>
               )}
               <span className="rounded-full border border-gold/40 bg-espresso/85 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-gold-light backdrop-blur-md">
@@ -287,8 +308,13 @@ export default function ProductDetail() {
 
           {isCustomItem ? (
             <div className="mt-3 flex flex-wrap items-center gap-2">
+              {customItem.price > 0 && (
+                <span className="text-2xl font-bold text-teak">
+                  Ref. {formatRupiah(customItem.price)}
+                </span>
+              )}
               <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/40 bg-sand px-3.5 py-1 text-sm font-bold text-teak">
-                <History size={14} /> Karya Custom Pelanggan · Harga via WhatsApp
+                <History size={14} /> Karya Custom Pelanggan · Harga Final via Owner
               </span>
             </div>
           ) : (
@@ -332,7 +358,7 @@ export default function ProductDetail() {
             <Info size={20} className="mt-0.5 shrink-0 text-teak" />
             <p className="text-[15px] leading-relaxed text-bark">
               {isCustomItem
-                ? 'Kamu bisa ubah ukuran, warna kayu, maupun detail ukiran dari model ini langsung di Studio Custom.'
+                ? 'Kamu bisa langsung memesan model ini tanpa mengatur ulang custom, atau ubah ukuran & warna kayu lewat Studio Custom.'
                 : 'Pesanan mendadak tidak dapat diterima. Mohon pesan sesuai estimasi pembuatan di atas.'}
             </p>
           </div>
@@ -345,31 +371,63 @@ export default function ProductDetail() {
               <p className="mt-1.5 text-sm text-cream/80">
                 Anda sedang meninjau tampilan halaman produk. Akun Owner tidak dapat mengajukan pemesanan.
               </p>
-              <Link to="/admin" className="btn-gold mt-4 w-full text-sm">
-                Kelola Produk di Dashboard Owner
+              <Link to="/admin/products?tab=custom" className="btn-gold mt-4 w-full text-sm">
+                Kelola Katalog &amp; Karya di Dashboard Owner
               </Link>
             </div>
           ) : isCustomItem ? (
             <div className="mt-6 space-y-3">
+              {customFeedbackText && (
+                <div className="rounded-2xl border border-gold/30 bg-white p-4 shadow-soft">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold uppercase tracking-wider text-gold-dark">
+                      Feedback Pemesan ({customReviewerName || 'Pelanggan'} · {customItem.city})
+                    </p>
+                    {customFeedbackRating && (
+                      <span className="flex gap-0.5 text-gold">
+                        {[...Array(5)].map((_, k) => (
+                          <Star
+                            key={k}
+                            size={13}
+                            fill={k < customFeedbackRating ? 'currentColor' : 'none'}
+                            className={k < customFeedbackRating ? 'text-gold' : 'text-line'}
+                          />
+                        ))}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1.5 text-sm italic leading-relaxed text-bark">"{customFeedbackText}"</p>
+                </div>
+              )}
+
               <div className="flex flex-col gap-3 sm:flex-row">
                 <button
                   type="button"
-                  onClick={() => navigate('/custom', { state: { fromPortfolio: customItem } })}
+                  onClick={() => setQuickOrderCustom(customItem)}
                   className="btn-primary btn-shimmer flex-1"
                 >
-                  <Layers size={18} className="text-gold-light" /> Rancang &amp; Pesan Model Serupa
+                  <MessageCircle size={18} className="text-gold-light" /> Pesan Langsung Model Ini
                 </button>
-                <a href={customWaLink} target="_blank" rel="noreferrer" className="btn-outline flex-1">
-                  <MessageCircle size={18} /> Tanya Harga di WA
-                </a>
+                <button
+                  type="button"
+                  onClick={() => navigate('/custom', { state: { fromPortfolio: customItem } })}
+                  className="btn-outline flex-1"
+                >
+                  <Layers size={18} /> Ubah Ukuran di Studio
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => openKoyoWith(`Saya mau tanya soal hasil custom ${customItem.name} (${customItem.size})`)}
-                className="btn-soft w-full"
-              >
-                <Sparkles size={17} className="text-gold-dark" /> Diskusi Model Ini dengan Koyo
-              </button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <a href={customWaLink} target="_blank" rel="noreferrer" className="btn-soft flex-1">
+                  Tanya Harga di WA
+                </a>
+                <button
+                  type="button"
+                  onClick={() => openKoyoWith(`Saya mau tanya soal hasil custom ${customItem.name} (${customItem.size})`)}
+                  className="btn-soft flex-1"
+                >
+                  <Sparkles size={17} className="text-gold-dark" /> Diskusi dengan Koyo
+                </button>
+              </div>
             </div>
           ) : (
             <>
@@ -479,6 +537,7 @@ export default function ProductDetail() {
                 key={item.id}
                 item={item}
                 onUseAsBase={(it) => navigate('/custom', { state: { fromPortfolio: it } })}
+                onQuickOrder={(it) => setQuickOrderCustom(it)}
               />
             ))}
           </div>
@@ -554,6 +613,12 @@ export default function ProductDetail() {
 
       <AnimatePresence>
         {showOrder && product && !isOwner && <OrderModal product={product} onClose={() => setShowOrder(false)} />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {quickOrderCustom && !isOwner && (
+          <OrderModal customItem={quickOrderCustom} onClose={() => setQuickOrderCustom(null)} />
+        )}
       </AnimatePresence>
     </div>
   );

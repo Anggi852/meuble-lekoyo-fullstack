@@ -15,6 +15,9 @@ import {
   Sparkles,
   ArrowRight,
   Star,
+  Camera,
+  ZoomIn,
+  X,
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { useApp } from '../context/AppContext';
@@ -45,6 +48,7 @@ export default function MyOrders() {
   const [city, setCity] = useState('');
   const [reviewText, setReviewText] = useState('');
   const [sendingReview, setSendingReview] = useState(false);
+  const [zoomPhoto, setZoomPhoto] = useState(null);
 
   useEffect(() => {
     if (user && !isOwner) {
@@ -321,6 +325,43 @@ export default function MyOrders() {
                   )}
                 </div>
 
+                {Array.isArray(order.finishedPhotos) && order.finishedPhotos.length > 0 && (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3.5">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-800">
+                        <Camera size={14} /> Foto Produk yang Sudah Jadi ({order.finishedPhotos.length})
+                      </p>
+                      {order.publishedPortfolioId && (
+                        <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-semibold text-teak shadow-soft">
+                          Tampil di Galeri Karya Custom
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {order.finishedPhotos.map((ph, idx) => (
+                        <button
+                          key={`${ph.url?.slice(0, 24)}-${idx}`}
+                          type="button"
+                          onClick={() => setZoomPhoto({ src: ph.url, label: ph.label || `Hasil Jadi ${idx + 1}` })}
+                          className="group relative overflow-hidden rounded-xl border border-white bg-sand shadow-soft"
+                        >
+                          <img
+                            src={ph.url}
+                            alt={ph.label || `Foto hasil jadi ${idx + 1}`}
+                            className="aspect-[4/3] w-full object-cover transition duration-300 group-hover:scale-105"
+                          />
+                          <span className="absolute inset-0 grid place-items-center bg-espresso/0 text-white opacity-0 transition group-hover:bg-espresso/40 group-hover:opacity-100">
+                            <ZoomIn size={18} />
+                          </span>
+                          <span className="absolute bottom-1 left-1 rounded-full bg-espresso/80 px-2 py-0.5 text-[10px] font-semibold text-cream">
+                            {ph.label || `Foto ${idx + 1}`}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {existingReview && (
                   <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-sm">
                     <div className="flex items-center justify-between gap-2">
@@ -438,6 +479,35 @@ export default function MyOrders() {
           </Modal>
         )}
       </AnimatePresence>
+
+      {zoomPhoto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-espresso/85 p-4 backdrop-blur-sm"
+          onClick={() => setZoomPhoto(null)}
+        >
+          <div
+            className="relative max-h-[90vh] max-w-3xl overflow-hidden rounded-2xl border border-gold/40 bg-cream p-3 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between gap-4 px-1">
+              <p className="text-sm font-bold text-espresso">{zoomPhoto.label}</p>
+              <button
+                type="button"
+                onClick={() => setZoomPhoto(null)}
+                className="grid h-8 w-8 place-items-center rounded-full bg-sand text-espresso hover:bg-espresso hover:text-gold-light"
+                aria-label="Tutup foto"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <img
+              src={zoomPhoto.src}
+              alt={zoomPhoto.label}
+              className="max-h-[78vh] w-auto rounded-xl object-contain"
+            />
+          </div>
+        </div>
+      )}
     </section>
   );
 }
