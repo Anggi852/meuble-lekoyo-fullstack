@@ -59,7 +59,7 @@ function App() {
           <Route index element={<Overview />} />
           <Route path="orders" element={<Orders />} />
           <Route path="products" element={<Products />} />
-          <Route path="custom-gallery" element={<CustomGallery />} />
+          <Route path="custom-gallery" element={<Navigate to="/admin/products?tab=custom" replace />} />
           <Route path="faqs" element={<Faqs />} />
           <Route path="testimonials" element={<Testimonials />} />
           <Route path="chats" element={<Chats />} />

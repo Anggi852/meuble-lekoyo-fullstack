@@ -1,244 +1,469 @@
-import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import {
-  LayoutDashboard,
-  ShoppingBag,
-  Package,
-  HelpCircle,
-  Quote,
-  MessageSquare,
-  BarChart2,
-  Wallet,
-  ExternalLink,
-  LogOut,
-  CalendarDays,
-  Activity,
-} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Images,
+  Layers,
+  Package,
+  Plus,
+  RotateCcw,
+  Search,
+  ShoppingBag,
+  Star,
+  X,
+} from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { LogoMark } from '../Navbar';
-import { getShopStatus } from '../../utils/format';
+import { categories } from '../../data/products';
+import { formatRupiah } from '../../utils/format';
+import { getProductImages } from '../../utils/image';
+import FormModal from '../../components/FormModal';
+import ResponsiveImage from '../../components/ResponsiveImage';
+import { AddButton, PageHeader, RowActions, confirmDelete } from '../../components/admin/ui';
+import { todayISO } from '../../utils/sales';
+import CustomGallery from './CustomGallery';
 
-export default function AdminLayout() {
-  const { user, isLoggedIn, logoutAdmin, backendOnline, orders } = useApp();
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
-  if (!isLoggedIn) return <Navigate to="/admin/login" replace />;
+const fields = [
+  { name: 'name', label: 'Nama produk', required: true, placeholder: 'Contoh: Meja Makan Jati Minimalis' },
+  { name: 'category', label: 'Kategori', type: 'select', options: categories.filter((c) => c !== 'Semua') },
+  { name: 'price', label: 'Harga (Rp)', type: 'number', required: true, placeholder: '4500000' },
+  { name: 'description', label: 'Deskripsi', type: 'textarea', required: true },
+  { name: 'material', label: 'Bahan', required: true, placeholder: 'Kayu Jati Solid' },
+  { name: 'productionTime', label: 'Estimasi pembuatan', required: true, placeholder: '2 bulan' },
+  {
+    name: 'images',
+    label: 'Foto produk (maks. 4 foto)',
+    type: 'photos',
+    max: 4,
+    required: true,
+    hint: 'Pilih langsung foto dari galeri HP atau laptop. Anda dapat mengatur sudut (Tampak Depan, Samping, Belakang, Detail) dan memilih foto utama.',
+  },
+  {
+    name: 'stockStatus',
+    label: 'Status stok',
+    type: 'select',
+    options: ['Tersedia', 'Terjual'],
+    hint: 'Pilih "Terjual" jika unit ini sudah laku. Pelanggan tetap bisa memesan ulang.',
+  },
+  { name: 'featured', label: 'Tampilkan di Produk Unggulan (beranda)', type: 'checkbox' },
+];
 
-  const status = getShopStatus();
-  const todayText = new Date().toLocaleDateString('id-ID', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+const saleFields = [
+  { name: 'quantity', label: 'Jumlah terjual', type: 'number', required: true },
+  { name: 'date', label: 'Tanggal', type: 'date', required: true },
+  { name: 'note', label: 'Catatan (opsional)', placeholder: 'Contoh: dibeli tunai di toko' },
+  { name: 'markSold', label: 'Tandai stok produk ini sebagai Terjual', type: 'checkbox' },
+];
 
-  const newOrders = orders.filter(
-    (o) =>
-      o.status === 'Menunggu Harga Owner' ||
-      o.status === 'Menunggu Konfirmasi WA' ||
-      o.status === 'Baru',
-  ).length;
+const blank = {
+  name: '',
+  category: 'Meja',
+  price: '',
+  description: '',
+  material: 'Kayu Jati Solid',
+  productionTime: '2 bulan',
+  images: [],
+  stockStatus: 'Tersedia',
+  featured: false,
+};
 
-  const items = [
-    { to: '/admin', label: 'Ringkasan', icon: LayoutDashboard, end: true },
-    { to: '/admin/orders', label: 'Pesanan', icon: ShoppingBag, badge: newOrders },
-    { to: '/admin/products', label: 'Katalog & Karya', icon: Package },
-    { to: '/admin/sales', label: 'Penjualan', icon: Wallet },
-    { to: '/admin/faqs', label: 'FAQ', icon: HelpCircle },
-    { to: '/admin/testimonials', label: 'Testimoni', icon: Quote },
-    { to: '/admin/chats', label: 'Log Chat', icon: MessageSquare },
-    { to: '/admin/activities', label: 'Aktivitas Akun', icon: Activity },
-    { to: '/admin/analytics', label: 'Analitik', icon: BarChart2 },
-  ];
+export default function Products() {
+  const { products, customPortfolio, saveProduct, removeProduct, soldOf, addSale, setStock } = useApp();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'custom' ? 'custom' : 'catalog';
 
-  const currentItem =
-    items.find((it) => (it.end ? pathname === it.to : pathname.startsWith(it.to))) || items[0];
+  const [modal, setModal] = useState(null);
+  const [saleFor, setSaleFor] = useState(null);
+  const [addCustomSignal, setAddCustomSignal] = useState(0);
 
-  const ownerInitials = (user?.name || 'NS')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase())
-    .join('');
+  const [catFilter, setCatFilter] = useState('Semua');
+  const [stockFilter, setStockFilter] = useState('Semua');
+  const [query, setQuery] = useState('');
+  const [collapsed, setCollapsed] = useState({});
 
-  const logout = () => {
-    logoutAdmin();
-    toast.info('Anda telah keluar dari portal owner.');
-    navigate('/admin/login');
+  const switchTab = (nextTab) => {
+    setAddCustomSignal(0);
+    setSearchParams(nextTab === 'custom' ? { tab: 'custom' } : {}, { replace: true });
   };
 
-  const Brand = (
-    <div className="flex items-center gap-3">
-      <LogoMark size={40} />
-      <div className="leading-tight">
-        <p className="font-heading text-lg font-bold text-cream">Meuble Le'Koyo</p>
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-light">
-          Executive Dashboard
-        </p>
-      </div>
-    </div>
-  );
+  const allCategories = useMemo(() => {
+    const extras = products
+      .map((p) => p.category)
+      .filter((c) => c && !categories.includes(c));
+    return [...categories, ...new Set(extras)];
+  }, [products]);
 
-  return (
-    <div className="min-h-[100dvh] bg-cream lg:grid lg:grid-cols-[272px_1fr]">
-      {/* Sidebar Desktop Mewah */}
-      <aside className="luxury-dark sticky top-0 hidden h-screen flex-col border-r border-gold/25 p-5 text-cream/80 lg:flex">
-        <div className="pb-5">{Brand}</div>
-        <div className="gold-divider mb-5" aria-hidden="true" />
+  const filteredProducts = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return products.filter((p) => {
+      if (catFilter !== 'Semua' && p.category !== catFilter) return false;
+      if (stockFilter === 'Tersedia' && p.stockStatus === 'Terjual') return false;
+      if (stockFilter === 'Terjual' && p.stockStatus !== 'Terjual') return false;
+      if (q) {
+        const hay = `${p.name} ${p.category} ${p.material || ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [products, catFilter, stockFilter, query]);
 
-        <nav className="flex-1 space-y-1.5 overflow-y-auto pr-1" aria-label="Menu admin">
-          {items.map((it) => (
-            <NavLink
-              key={it.to}
-              to={it.to}
-              end={it.end}
-              className={({ isActive }) =>
-                `group flex items-center gap-3 rounded-xl px-4 py-3 text-[14.5px] font-medium transition ${
-                  isActive
-                    ? 'border border-gold/45 bg-gradient-to-r from-teak to-teak-dark/90 font-semibold text-cream shadow-soft'
-                    : 'border border-transparent text-cream/75 hover:border-white/10 hover:bg-white/[0.06] hover:text-cream'
-                }`
-              }
+  const groupedProducts = useMemo(() => {
+    const order = allCategories.filter((c) => c !== 'Semua');
+    const map = new Map();
+    for (const p of filteredProducts) {
+      const key = p.category || 'Lainnya';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(p);
+    }
+    return [...map.entries()].sort((a, b) => {
+      const ia = order.indexOf(a[0]);
+      const ib = order.indexOf(b[0]);
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+    });
+  }, [filteredProducts, allCategories]);
+
+  const toggleGroup = (cat) => {
+    setCollapsed((prev) => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
+  const submitSale = (v) => {
+    if (!saleFor) return;
+    addSale({ ...v, productId: saleFor?.id });
+    toast.success(`Tercatat: ${saleFor?.name} terjual ${v.quantity}`);
+    setSaleFor(null);
+  };
+
+  const submit = (v) => {
+    const imgs = getProductImages(v);
+    saveProduct({ ...v, images: imgs, image: imgs[0]?.url || '' });
+    setModal(null);
+    toast.success(v.id ? 'Perubahan produk disimpan' : 'Produk baru ditambahkan');
+  };
+
+  const openEdit = (p) => {
+    setModal({ ...p, images: getProductImages(p) });
+  };
+
+  const openAddInCategory = (cat) => {
+    const validCat = categories.includes(cat) && cat !== 'Semua' ? cat : 'Meja';
+    setModal({ ...blank, category: validCat });
+  };
+
+  const renderProductCard = (p) => {
+    const sold = soldOf(p.id);
+    const isSold = p.stockStatus === 'Terjual';
+    const photos = getProductImages(p);
+
+    return (
+      <article
+        key={p.id}
+        className="luxury-panel flex flex-col gap-3 p-4 transition hover:border-gold/55"
+      >
+        <div className="flex gap-3.5">
+          <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-sand">
+            <ResponsiveImage
+              src={photos[0]?.url || p.image}
+              alt={p.name}
+              widths={[160, 320]}
+              sizes="96px"
+              defaultWidth={240}
+              className="h-full w-full object-cover"
+            />
+            <span className="absolute bottom-1 right-1 inline-flex items-center gap-0.5 rounded-full bg-espresso/85 px-1.5 py-0.5 text-[10px] font-bold text-gold-light">
+              <Images size={9} /> {photos.length}
+            </span>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                  isSold ? 'bg-bark/10 text-bark' : 'bg-green-100 text-green-800'
+                }`}
+              >
+                {isSold ? 'Terjual' : 'Tersedia'}
+              </span>
+              {p.featured && (
+                <span className="inline-flex items-center gap-0.5 rounded-full border border-gold/45 bg-gold/15 px-2 py-0.5 text-[10.5px] font-bold text-teak">
+                  <Star size={10} fill="currentColor" className="text-gold-dark" /> Unggulan
+                </span>
+              )}
+            </div>
+
+            <h3 className="font-heading mt-1.5 truncate text-base font-bold text-espresso" title={p.name}>
+              {p.name}
+            </h3>
+            <p className="text-sm font-bold text-teak">{formatRupiah(p.price)}</p>
+            <p className="mt-0.5 text-xs text-muted">
+              Terjual <strong className="text-espresso">{sold.total}×</strong> ({sold.online} online · {sold.offline} toko)
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-3">
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setSaleFor({ ...p })}
+              className="btn-primary !min-h-[36px] !px-3 !py-1.5 text-xs"
             >
-              {({ isActive }) => (
+              <ShoppingBag size={13} className="text-gold-light" /> Catat terjual
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStock(p.id, isSold ? 'Tersedia' : 'Terjual');
+                toast.success(isSold ? 'Ditandai tersedia' : 'Ditandai terjual');
+              }}
+              className="btn-soft !min-h-[36px] !px-3 !py-1.5 text-xs"
+            >
+              {isSold ? (
                 <>
-                  <it.icon
-                    size={18}
-                    className={
-                      isActive ? 'text-gold-light' : 'text-gold-light/65 group-hover:text-gold-light'
-                    }
-                  />
-                  <span className="flex-1">{it.label}</span>
-                  {it.badge > 0 && (
-                    <span className="grid h-6 min-w-6 place-items-center rounded-full bg-gold px-1.5 text-xs font-bold text-espresso shadow-gold">
-                      {it.badge}
-                    </span>
-                  )}
+                  <RotateCcw size={13} /> Tersedia lagi
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={13} /> Tandai terjual
                 </>
               )}
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className="mt-5 space-y-1.5 border-t border-white/10 pt-4">
-          <a
-            href="/"
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium text-cream/80 transition hover:bg-white/10 hover:text-gold-light"
-          >
-            <ExternalLink size={17} className="text-gold-light/80" /> Lihat Website Galeri
-          </a>
-          <button
-            onClick={logout}
-            className="flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium text-cream/70 transition hover:bg-red-500/15 hover:text-red-200"
-          >
-            <LogOut size={17} /> Keluar
-          </button>
+            </button>
+          </div>
+          <RowActions
+            name={p.name}
+            onEdit={() => openEdit(p)}
+            onDelete={() => confirmDelete(p.name, () => removeProduct(p.id))}
+          />
         </div>
-      </aside>
+      </article>
+    );
+  };
 
-      <div className="min-w-0 flex flex-col">
-        {/* Topbar Desktop */}
-        <header className="sticky top-0 z-30 hidden items-center justify-between border-b border-gold/20 bg-cream/90 px-8 py-3.5 backdrop-blur-md lg:flex">
-          <div className="flex items-center gap-2.5 text-sm">
-            <span className="font-heading text-base font-bold text-espresso">
-              {currentItem.label}
-            </span>
-            <span className="text-gold">✦</span>
-            <span className="inline-flex items-center gap-1.5 text-muted">
-              <CalendarDays size={14} className="text-gold-dark" /> {todayText}
-            </span>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold shadow-soft ${
-                backendOnline
-                  ? 'border-sage/35 bg-sage/10 text-sage'
-                  : 'border-red-300 bg-red-50 text-red-700'
-              }`}
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${backendOnline ? 'bg-sage' : 'bg-red-500'}`}
-              />
-              {backendOnline ? 'API Terhubung' : 'API Offline'}
-            </span>
-            <span className="inline-flex items-center gap-2 rounded-full border border-gold/30 bg-white px-3.5 py-1.5 text-xs font-semibold text-bark shadow-soft">
-              <span
-                className={`h-2 w-2 rounded-full ${status.open ? 'bg-sage' : 'bg-wood/60'}`}
-              />
-              {status.label}
-            </span>
-            {user?.picture ? (
-              <img
-                src={user.picture}
-                alt={user.name || 'Owner'}
-                className="h-9 w-9 rounded-full border border-gold/50 object-cover"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <span className="grid h-9 w-9 place-items-center rounded-full border border-gold/45 bg-espresso font-heading text-sm font-bold text-gold-light">
-                {ownerInitials || 'NS'}
-              </span>
-            )}
-          </div>
-        </header>
+  return (
+    <div>
+      <PageHeader
+        title="Katalog & Karya"
+        desc="Kelola Produk Katalog dan Karya Pernah Dicustom dalam satu tempat — sudah dikelompokkan rapi per kategori."
+        action={
+          activeTab === 'catalog' ? (
+            <AddButton onClick={() => openAddInCategory(catFilter)}>Tambah produk</AddButton>
+          ) : (
+            <AddButton onClick={() => setAddCustomSignal((n) => n + 1)}>
+              Tambah karya custom
+            </AddButton>
+          )
+        }
+      />
 
-        {/* Header Mobile */}
-        <header className="luxury-dark safe-pt sticky top-0 z-30 border-b border-gold/30 lg:hidden">
-          <div className="flex items-center justify-between px-4 py-3.5">
-            {Brand}
-            <div className="flex gap-1 text-cream/85">
-              <a
-                href="/"
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-xl p-2.5 hover:bg-white/10"
-                aria-label="Lihat website"
-              >
-                <ExternalLink size={20} className="text-gold-light" />
-              </a>
-              <button
-                onClick={logout}
-                className="rounded-xl p-2.5 hover:bg-white/10"
-                aria-label="Keluar"
-              >
-                <LogOut size={20} />
-              </button>
+      {/* Tab Utama: Produk Katalog vs Karya Custom */}
+      <div className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-gold/30 bg-white/85 p-1.5 shadow-soft">
+        <button
+          type="button"
+          onClick={() => switchTab('catalog')}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition sm:flex-none ${
+            activeTab === 'catalog'
+              ? 'bg-espresso text-gold-light shadow-soft'
+              : 'text-muted hover:bg-sand/70 hover:text-espresso'
+          }`}
+        >
+          <Package size={16} />
+          Produk Katalog
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+              activeTab === 'catalog' ? 'bg-gold text-espresso' : 'bg-sand text-teak'
+            }`}
+          >
+            {products.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => switchTab('custom')}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition sm:flex-none ${
+            activeTab === 'custom'
+              ? 'bg-espresso text-gold-light shadow-soft'
+              : 'text-muted hover:bg-sand/70 hover:text-espresso'
+          }`}
+        >
+          <Layers size={16} />
+          Karya Pernah Dicustom
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+              activeTab === 'custom' ? 'bg-gold text-espresso' : 'bg-sand text-teak'
+            }`}
+          >
+            {customPortfolio.length}
+          </span>
+        </button>
+      </div>
+
+      {activeTab === 'custom' ? (
+        <CustomGallery
+          embedded
+          addSignal={addCustomSignal}
+          onAddConsumed={() => setAddCustomSignal(0)}
+        />
+      ) : (
+        <>
+          {/* Bar Pencarian + Filter Status */}
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1 sm:max-w-sm">
+              <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Cari nama produk atau kategori..."
+                className="field !min-h-[42px] !py-2 !pl-10 !pr-9 text-sm"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  aria-label="Hapus pencarian"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted hover:bg-sand hover:text-espresso"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {['Semua', 'Tersedia', 'Terjual'].map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setStockFilter(st)}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                    stockFilter === st
+                      ? 'bg-teak text-white shadow-soft'
+                      : 'border border-line bg-white text-muted hover:border-teak hover:text-espresso'
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
             </div>
           </div>
-          <nav
-            className="no-scrollbar flex gap-2 overflow-x-auto px-4 pb-3.5"
-            aria-label="Menu admin"
-          >
-            {items.map((it) => (
-              <NavLink
-                key={it.to}
-                to={it.to}
-                end={it.end}
-                className={({ isActive }) =>
-                  `flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition ${
-                    isActive
-                      ? 'border-gold bg-gold text-espresso shadow-gold'
-                      : 'border-white/15 bg-white/10 text-cream/85'
-                  }`
-                }
-              >
-                {it.label}
-                {it.badge > 0 && (
-                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-espresso px-1 text-[10px] font-bold text-gold-light">
-                    {it.badge}
-                  </span>
-                )}
-              </NavLink>
-            ))}
-          </nav>
-        </header>
 
-        <main className="safe-pb mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-8 sm:py-8">
-          <Outlet />
-        </main>
-      </div>
+          {/* Filter Pill per Kategori */}
+          <div className="no-scrollbar mb-6 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap">
+            {allCategories.map((cat) => {
+              const count =
+                cat === 'Semua'
+                  ? products.length
+                  : products.filter((p) => p.category === cat).length;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCatFilter(cat)}
+                  aria-pressed={catFilter === cat}
+                  className={`min-h-[38px] shrink-0 rounded-full px-4 text-sm font-medium transition ${
+                    catFilter === cat
+                      ? 'border border-gold/40 bg-espresso text-gold-light shadow-soft'
+                      : 'border border-line bg-white text-muted hover:border-gold hover:text-espresso'
+                  }`}
+                >
+                  {cat} ({count})
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Daftar Produk Terkelompok per Kategori */}
+          {filteredProducts.length === 0 ? (
+            <div className="luxury-panel p-10 text-center text-muted">
+              <p>Tidak ada produk yang cocok dengan filter saat ini.</p>
+              {(catFilter !== 'Semua' || stockFilter !== 'Semua' || query) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatFilter('Semua');
+                    setStockFilter('Semua');
+                    setQuery('');
+                  }}
+                  className="btn-soft mt-4 text-xs"
+                >
+                  Reset Filter
+                </button>
+              )}
+            </div>
+          ) : catFilter !== 'Semua' ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {filteredProducts.map(renderProductCard)}
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {groupedProducts.map(([cat, list]) => {
+                const isCollapsed = Boolean(collapsed[cat]);
+                return (
+                  <section
+                    key={cat}
+                    className="rounded-2xl border border-gold/25 bg-sand/35 p-4 sm:p-5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(cat)}
+                        className="flex items-center gap-2 text-left"
+                      >
+                        <span className="grid h-7 w-7 place-items-center rounded-lg bg-espresso text-gold-light">
+                          {isCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+                        </span>
+                        <h2 className="font-heading text-lg font-bold text-espresso">{cat}</h2>
+                        <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-bold text-teak shadow-soft">
+                          {list.length} produk
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openAddInCategory(cat)}
+                        className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-white px-3 py-1 text-xs font-semibold text-teak transition hover:bg-espresso hover:text-gold-light"
+                      >
+                        <Plus size={13} /> Tambah {cat}
+                      </button>
+                    </div>
+
+                    {!isCollapsed && (
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        {list.map(renderProductCard)}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      <AnimatePresence>
+        {saleFor && (
+          <FormModal
+            title={`Catat penjualan: ${saleFor.name}`}
+            fields={saleFields}
+            initial={{ quantity: 1, date: todayISO(), note: '', markSold: true }}
+            onClose={() => setSaleFor(null)}
+            onSubmit={submitSale}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {modal && (
+          <FormModal
+            title={modal.id ? 'Ubah produk' : 'Tambah produk'}
+            fields={fields}
+            initial={modal}
+            onClose={() => setModal(null)}
+            onSubmit={submit}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
