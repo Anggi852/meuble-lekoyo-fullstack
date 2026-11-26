@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   ShoppingBag,
   Package,
-  Layers,
   HelpCircle,
   Quote,
   MessageSquare,
@@ -18,7 +17,6 @@ import { toast } from 'sonner';
 import { useApp } from '../../context/AppContext';
 import { LogoMark } from '../Navbar';
 import { getShopStatus } from '../../utils/format';
-import { SWAGGER_DOCS_URL } from '../../services/api';
 
 export default function AdminLayout() {
   const { user, isLoggedIn, logoutAdmin, backendOnline, orders } = useApp();
@@ -44,8 +42,7 @@ export default function AdminLayout() {
   const items = [
     { to: '/admin', label: 'Ringkasan', icon: LayoutDashboard, end: true },
     { to: '/admin/orders', label: 'Pesanan', icon: ShoppingBag, badge: newOrders },
-    { to: '/admin/products', label: 'Produk', icon: Package },
-    { to: '/admin/custom-gallery', label: 'Karya Custom', icon: Layers },
+    { to: '/admin/products', label: 'Katalog & Karya', icon: Package },
     { to: '/admin/sales', label: 'Penjualan', icon: Wallet },
     { to: '/admin/faqs', label: 'FAQ', icon: HelpCircle },
     { to: '/admin/testimonials', label: 'Testimoni', icon: Quote },
