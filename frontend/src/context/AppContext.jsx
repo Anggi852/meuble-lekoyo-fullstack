@@ -225,21 +225,25 @@ export function AppProvider({ children }) {
       });
   }, [loadMyOrders, loadMyWishlist, loadMyActivities]);
 
+  // Sinkron otomatis antar tab/jendela browser (termasuk pesanan & status verifikasi pembayaran)
   useEffect(() => {
-    if (!user?.email) return undefined;
-    const syncAccountState = () => {
-      if (document.visibilityState === 'visible') {
+    const syncOnFocus = () => {
+      if (document.visibilityState && document.visibilityState !== 'visible') return;
+      if (isLoggedIn) {
+        loadAdminData();
+      } else if (user?.email) {
+        loadMyOrders();
         loadMyWishlist();
         loadMyActivities();
       }
     };
-    window.addEventListener('focus', syncAccountState);
-    document.addEventListener('visibilitychange', syncAccountState);
+    window.addEventListener('focus', syncOnFocus);
+    document.addEventListener('visibilitychange', syncOnFocus);
     return () => {
-      window.removeEventListener('focus', syncAccountState);
-      document.removeEventListener('visibilitychange', syncAccountState);
+      window.removeEventListener('focus', syncOnFocus);
+      document.removeEventListener('visibilitychange', syncOnFocus);
     };
-  }, [user?.email, loadMyWishlist, loadMyActivities]);
+  }, [isLoggedIn, user?.email, loadAdminData, loadMyOrders, loadMyWishlist, loadMyActivities]);
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -517,6 +521,12 @@ export function AppProvider({ children }) {
   };
 
   /* -------------------- PESANAN, PEMBAYARAN & PENJUALAN -------------------- */
+  const syncUpdatedOrder = (orderId, updated) => {
+    const idNum = Number(orderId);
+    setOrders((prev) => prev.map((o) => (Number(o.id) === idNum ? updated : o)));
+    setMyOrders((prev) => prev.map((o) => (Number(o.id) === idNum ? updated : o)));
+  };
+
   const addOrder = async (order) => {
     try {
       const created = await api.createOrder(order);
@@ -548,7 +558,7 @@ export function AppProvider({ children }) {
   const updateOrderStatus = async (id, status) => {
     try {
       const updated = await api.updateOrder(id, { status });
-      setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)));
+      syncUpdatedOrder(id, updated);
     } catch (err) {
       toast.error(extractApiError(err, 'Gagal memperbarui status pesanan.'));
     }
@@ -557,7 +567,7 @@ export function AppProvider({ children }) {
   const updateOrder = async (id, patch) => {
     try {
       const updated = await api.updateOrder(id, patch);
-      setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)));
+      syncUpdatedOrder(id, updated);
     } catch (err) {
       toast.error(extractApiError(err, 'Gagal memperbarui pesanan.'));
     }
@@ -566,8 +576,7 @@ export function AppProvider({ children }) {
   const submitOrderPayment = async (orderId, payload) => {
     try {
       const updated = await api.addOrderPayment(orderId, payload);
-      setOrders((prev) => prev.map((o) => (Number(o.id) === Number(orderId) ? updated : o)));
-      setMyOrders((prev) => prev.map((o) => (Number(o.id) === Number(orderId) ? updated : o)));
+      syncUpdatedOrder(orderId, updated);
       if (user?.email && !isLoggedIn) loadMyActivities();
       return updated;
     } catch (err) {
@@ -579,7 +588,7 @@ export function AppProvider({ children }) {
   const verifyOrderPayment = async (orderId, paymentId, payload) => {
     try {
       const updated = await api.verifyOrderPayment(orderId, paymentId, payload);
-      setOrders((prev) => prev.map((o) => (Number(o.id) === Number(orderId) ? updated : o)));
+      syncUpdatedOrder(orderId, updated);
       return updated;
     } catch (err) {
       toast.error(extractApiError(err, 'Gagal memperbarui status verifikasi pembayaran.'));
@@ -590,7 +599,7 @@ export function AppProvider({ children }) {
   const deleteOrderPayment = async (orderId, paymentId) => {
     try {
       const updated = await api.deleteOrderPayment(orderId, paymentId);
-      setOrders((prev) => prev.map((o) => (Number(o.id) === Number(orderId) ? updated : o)));
+      syncUpdatedOrder(orderId, updated);
       return updated;
     } catch (err) {
       toast.error(extractApiError(err, 'Gagal menghapus catatan pembayaran.'));
@@ -601,7 +610,8 @@ export function AppProvider({ children }) {
   const removeOrder = async (id) => {
     try {
       await api.deleteOrder(id);
-      setOrders((prev) => prev.filter((o) => o.id !== id));
+      setOrders((prev) => prev.filter((o) => Number(o.id) !== Number(id)));
+      setMyOrders((prev) => prev.filter((o) => Number(o.id) !== Number(id)));
     } catch (err) {
       toast.error(extractApiError(err, 'Gagal menghapus pesanan.'));
     }

@@ -12,12 +12,46 @@ export function getPaymentSummary(order) {
     order?.finalPrice !== null && order?.finalPrice !== undefined && Number(order.finalPrice) > 0
       ? Number(order.finalPrice)
       : 0;
-  const records = Array.isArray(order?.paymentRecords) ? order.paymentRecords : [];
-  const verifiedRecords = records.filter((r) => r.status === 'Terverifikasi');
-  const pendingRecords = records.filter((r) => r.status === 'Menunggu Verifikasi');
-  const rejectedRecords = records.filter((r) => r.status === 'Ditolak');
+  const rawRecords = Array.isArray(order?.paymentRecords) ? order.paymentRecords : [];
 
-  const paidAmount = verifiedRecords.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  // Urutkan kronologis dari setoran paling awal agar perhitungan sisa berjalan akurat
+  const records = [...rawRecords].sort((a, b) => {
+    const ta = new Date(a?.createdAt || a?.date || 0).getTime() || Number(a?.id) || 0;
+    const tb = new Date(b?.createdAt || b?.date || 0).getTime() || Number(b?.id) || 0;
+    return ta - tb;
+  });
+
+  let runningPaid = 0;
+  let verifiedStep = 0;
+
+  const ledger = records.map((r) => {
+    const amt = Number(r?.amount) || 0;
+    if (r?.status === 'Terverifikasi') {
+      verifiedStep += 1;
+      runningPaid += amt;
+      const balanceAfter = Math.max(0, bill - runningPaid);
+      return {
+        ...r,
+        amount: amt,
+        stepNumber: verifiedStep,
+        runningPaid,
+        balanceAfter,
+      };
+    }
+    return {
+      ...r,
+      amount: amt,
+      stepNumber: null,
+      runningPaid,
+      balanceAfter: null,
+    };
+  });
+
+  const verifiedRecords = ledger.filter((r) => r.status === 'Terverifikasi');
+  const pendingRecords = ledger.filter((r) => r.status === 'Menunggu Verifikasi');
+  const rejectedRecords = ledger.filter((r) => r.status === 'Ditolak');
+
+  const paidAmount = runningPaid;
   const pendingAmount = pendingRecords.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
   const remaining = Math.max(0, bill - paidAmount);
   const percent = bill > 0 ? Math.min(100, Math.round((paidAmount / bill) * 100)) : 0;
@@ -33,6 +67,7 @@ export function getPaymentSummary(order) {
   return {
     bill,
     records,
+    ledger,
     verifiedRecords,
     pendingRecords,
     rejectedRecords,
