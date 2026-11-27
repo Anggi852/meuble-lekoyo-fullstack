@@ -106,6 +106,39 @@ export const orderUpdateSchema = Joi.object({
   publishedPortfolioId: Joi.number().integer().allow(null).optional(),
 }).min(1);
 
+export const paymentRecordCreateSchema = Joi.object({
+  amount: Joi.number().integer().min(1000).max(500000000).required().messages({
+    'number.min': 'Nominal pembayaran minimal Rp 1.000.',
+    'any.required': 'Nominal pembayaran wajib diisi.',
+  }),
+  date: Joi.string().trim().max(30).optional(),
+  method: Joi.string()
+    .valid('Transfer Bank', 'QRIS', 'Tunai di Toko')
+    .default('Transfer Bank'),
+  accountLabel: Joi.string().trim().allow('', null).max(160).default(''),
+  note: Joi.string().trim().allow('', null).max(300).default(''),
+  proofImage: Joi.string().allow('', null).default(''),
+});
+
+export const paymentRecordUpdateSchema = Joi.object({
+  status: Joi.string().valid('Menunggu Verifikasi', 'Terverifikasi', 'Ditolak').required(),
+  rejectReason: Joi.string().trim().allow('', null).max(300).default(''),
+});
+
+const bankAccountSchema = Joi.object({
+  id: Joi.alternatives().try(Joi.string().trim().max(60), Joi.number()).optional(),
+  bankName: Joi.string().trim().min(2).max(60).required(),
+  accountNumber: Joi.string().trim().min(4).max(60).required(),
+  accountHolder: Joi.string().trim().min(2).max(120).required(),
+});
+
+export const paymentSettingsSchema = Joi.object({
+  accounts: Joi.array().items(bankAccountSchema).max(10).default([]),
+  qrisImage: Joi.string().allow('', null).default(''),
+  cashNote: Joi.string().trim().allow('', null).max(500).default(''),
+  tabungNote: Joi.string().trim().allow('', null).max(500).default(''),
+});
+
 export const saleCreateSchema = Joi.object({
   productId: Joi.number().integer().required(),
   quantity: Joi.number().integer().min(1).max(500).required(),

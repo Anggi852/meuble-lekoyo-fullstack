@@ -114,3 +114,16 @@ ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_rating INTEGER;
 ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS show_feedback BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS price INTEGER;
 ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- Migrasi aman untuk foto hasil jadi pesanan & publikasi ke karya pernah dicustom
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS finished_photos JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS published_portfolio_id BIGINT;
+
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_id BIGINT;
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_feedback TEXT NOT NULL DEFAULT '';
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_rating INTEGER;
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS show_feedback BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS price INTEGER;
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT TRUE;

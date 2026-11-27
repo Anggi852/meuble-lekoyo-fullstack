@@ -16,6 +16,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = path.resolve(__dirname, '../../data/database.json');
 const SCHEMA_FILE = path.resolve(__dirname, '../../sql/schema.sql');
 
+const DEFAULT_PAYMENT_SETTINGS = {
+  accounts: [],
+  qrisImage: '',
+  cashNote:
+    "Pembayaran tunai dapat dibayarkan langsung di showroom Meuble Le'Koyo (Telanaipura, Kota Jambi) atau transfer penuh sesuai nominal tagihan.",
+  tabungNote:
+    'Sistem Tabung fleksibel: Anda dapat menyetor bertahap sesuai kemampuan. Setiap setoran yang terverifikasi otomatis mengurangi sisa tagihan hingga LUNAS.',
+};
+
 const USER_TRACKING_SQL = `
 CREATE TABLE IF NOT EXISTS user_wishlists (
   user_email TEXT NOT NULL,
@@ -38,6 +47,12 @@ CREATE TABLE IF NOT EXISTS user_activities (
 );
 CREATE INDEX IF NOT EXISTS idx_user_activities_email_time ON user_activities (user_email, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_activities_action ON user_activities (action);
+
+CREATE TABLE IF NOT EXISTS store_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL
+);
+
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS rating INTEGER NOT NULL DEFAULT 5;
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS product_id BIGINT;
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS product_name TEXT NOT NULL DEFAULT '';
@@ -45,8 +60,11 @@ ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS order_id BIGINT;
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS user_email TEXT NOT NULL DEFAULT '';
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'owner';
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS show_on_home BOOLEAN NOT NULL DEFAULT TRUE;
+
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS finished_photos JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS published_portfolio_id BIGINT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_records JSONB NOT NULL DEFAULT '[]'::jsonb;
+
 ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_id BIGINT;
 ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_code TEXT NOT NULL DEFAULT '';
 ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_name TEXT NOT NULL DEFAULT '';
@@ -56,18 +74,50 @@ ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS show_feedback BOOLEAN NOT 
 ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS price INTEGER;
 ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT TRUE;
 `;
+
 function normalizeImages(item) {
-  const raw = Array.isArray(item.images) && item.images.length > 0
-    ? item.images
-    : item.image
-    ? [{ url: item.image, label: 'Tampak Depan' }]
-    : [];
+  const raw =
+    Array.isArray(item.images) && item.images.length > 0
+      ? item.images
+      : item.image
+        ? [{ url: item.image, label: 'Tampak Depan' }]
+        : [];
   const clean = raw
-    .map((x, i) => (typeof x === 'string' ? { url: x, label: `Foto ${i + 1}` } : { url: x?.url || '', label: x?.label || `Foto ${i + 1}` }))
+    .map((x, i) =>
+      typeof x === 'string'
+        ? { url: x, label: `Foto ${i + 1}` }
+        : { url: x?.url || '', label: x?.label || `Foto ${i + 1}` },
+    )
     .filter((x) => Boolean(x.url));
   return {
     images: clean,
     image: clean[0]?.url || item.image || '',
+  };
+}
+
+function normalizePaymentSettings(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const accounts = Array.isArray(src.accounts)
+    ? src.accounts
+        .map((a, idx) => ({
+          id: a?.id ? String(a.id) : `acc-${idx + 1}`,
+          bankName: String(a?.bankName || '').trim(),
+          accountNumber: String(a?.accountNumber || '').trim(),
+          accountHolder: String(a?.accountHolder || '').trim(),
+        }))
+        .filter((a) => a.bankName && a.accountNumber && a.accountHolder)
+    : [];
+  return {
+    accounts,
+    qrisImage: typeof src.qrisImage === 'string' ? src.qrisImage : '',
+    cashNote:
+      typeof src.cashNote === 'string' && src.cashNote.trim()
+        ? src.cashNote.trim()
+        : DEFAULT_PAYMENT_SETTINGS.cashNote,
+    tabungNote:
+      typeof src.tabungNote === 'string' && src.tabungNote.trim()
+        ? src.tabungNote.trim()
+        : DEFAULT_PAYMENT_SETTINGS.tabungNote,
   };
 }
 
@@ -107,6 +157,14 @@ function initialSnapshot() {
       ...normalizeImages(p),
     })),
     customPortfolio: seedCustomPortfolio.map((c) => ({
+      orderId: null,
+      orderCode: '',
+      customerName: '',
+      customerFeedback: '',
+      customerRating: null,
+      showFeedback: true,
+      price: null,
+      isPublished: true,
       ...c,
       ...normalizeImages(c),
     })),
@@ -117,6 +175,7 @@ function initialSnapshot() {
     chatLogs: [],
     wishlists: {},
     activities: [],
+    paymentSettings: { ...DEFAULT_PAYMENT_SETTINGS },
     metrics: {
       visits: 0,
       views: {},
@@ -151,6 +210,7 @@ function createJsonDriver() {
         chatLogs: Array.isArray(parsed.chatLogs) ? parsed.chatLogs : [],
         wishlists: parsed.wishlists && typeof parsed.wishlists === 'object' ? parsed.wishlists : {},
         activities: Array.isArray(parsed.activities) ? parsed.activities : [],
+        paymentSettings: normalizePaymentSettings(parsed.paymentSettings),
         metrics: {
           visits: Number(parsed.metrics?.visits) || 0,
           views: parsed.metrics?.views && typeof parsed.metrics.views === 'object' ? parsed.metrics.views : {},
@@ -169,10 +229,26 @@ function createJsonDriver() {
     fs.renameSync(tmp, DATA_FILE);
   }
 
+  const normalizeOrderObj = (o) => ({
+    ...o,
+    finishedPhotos: Array.isArray(o.finishedPhotos) ? o.finishedPhotos : [],
+    publishedPortfolioId: o.publishedPortfolioId ?? null,
+    paymentRecords: Array.isArray(o.paymentRecords) ? o.paymentRecords : [],
+  });
+
   return {
     mode: 'json-file',
     async init() {
       load();
+    },
+
+    async getPaymentSettings() {
+      return normalizePaymentSettings(state.paymentSettings);
+    },
+    async updatePaymentSettings(data) {
+      state.paymentSettings = normalizePaymentSettings(data);
+      persist();
+      return state.paymentSettings;
     },
 
     async getProducts() { return state.products; },
@@ -268,13 +344,16 @@ function createJsonDriver() {
       return true;
     },
 
-    async getOrders() { return state.orders; },
+    async getOrders() { return state.orders.map(normalizeOrderObj); },
     async getOrderById(id) {
-      return state.orders.find((o) => o.id === Number(id)) || null;
+      const found = state.orders.find((o) => o.id === Number(id));
+      return found ? normalizeOrderObj(found) : null;
     },
     async getOrdersByEmail(email) {
       const target = String(email || '').trim().toLowerCase();
-      return state.orders.filter((o) => String(o.customerEmail || '').toLowerCase() === target);
+      return state.orders
+        .filter((o) => String(o.customerEmail || '').toLowerCase() === target)
+        .map(normalizeOrderObj);
     },
     async createOrder(data) {
       const estimated = Number(data.estimatedPrice ?? data.total) || 0;
@@ -293,13 +372,14 @@ function createJsonDriver() {
         madeNote: '',
         finishedPhotos: Array.isArray(data.finishedPhotos) ? data.finishedPhotos : [],
         publishedPortfolioId: data.publishedPortfolioId ?? null,
+        paymentRecords: Array.isArray(data.paymentRecords) ? data.paymentRecords : [],
         createdAt: new Date().toISOString(),
         ...data,
         total: data.finalPrice != null ? Number(data.finalPrice) : estimated,
       };
       state.orders = [item, ...state.orders];
       persist();
-      return item;
+      return normalizeOrderObj(item);
     },
     async updateOrder(id, patch) {
       const numId = Number(id);
@@ -309,7 +389,7 @@ function createJsonDriver() {
       if (patch.finalPrice !== undefined && patch.finalPrice !== null) {
         next.total = Number(patch.finalPrice);
       }
-      state.orders[idx] = next;
+      state.orders[idx] = normalizeOrderObj(next);
       persist();
       return state.orders[idx];
     },
@@ -370,7 +450,7 @@ function createJsonDriver() {
       return true;
     },
 
-  async getTestimonials() {
+    async getTestimonials() {
       return state.testimonials.map(normalizeTestimonial);
     },
     async getTestimonialByOrderId(orderId) {
@@ -424,7 +504,6 @@ function createJsonDriver() {
       persist();
     },
 
-    /* ---- WISHLIST PER AKUN ---- */
     async getWishlistByEmail(email) {
       const key = String(email || '').trim().toLowerCase();
       if (!key) return [];
@@ -442,7 +521,6 @@ function createJsonDriver() {
       return { active: !exists, productId: numId, wishlist: next };
     },
 
-    /* ---- AKTIVITAS AKUN (SIAP UNTUK AI / DATA SCIENCE) ---- */
     async createActivity(entry) {
       const email = String(entry.userEmail || '').trim().toLowerCase();
       if (!email) return null;
@@ -494,7 +572,9 @@ function createJsonDriver() {
     },
 
     async resetAll() {
+      const keptPaymentSettings = state.paymentSettings;
       state = initialSnapshot();
+      state.paymentSettings = normalizePaymentSettings(keptPaymentSettings);
       persist();
       return state;
     },
@@ -507,9 +587,10 @@ function createJsonDriver() {
 function createPostgresDriver(connectionString) {
   const pool = new Pool({
     connectionString,
-    ssl: connectionString.includes('localhost') || connectionString.includes('127.0.0.1')
-      ? false
-      : { rejectUnauthorized: false },
+    ssl:
+      connectionString.includes('localhost') || connectionString.includes('127.0.0.1')
+        ? false
+        : { rejectUnauthorized: false },
   });
 
   const mapProduct = (r) => ({
@@ -543,7 +624,10 @@ function createPostgresDriver(connectionString) {
     orderCode: r.order_code || '',
     customerName: r.customer_name || '',
     customerFeedback: r.customer_feedback || '',
-    customerRating: r.customer_rating === null || r.customer_rating === undefined ? null : Number(r.customer_rating),
+    customerRating:
+      r.customer_rating === null || r.customer_rating === undefined
+        ? null
+        : Number(r.customer_rating),
     showFeedback: r.show_feedback === undefined ? true : Boolean(r.show_feedback),
     price: r.price === null || r.price === undefined ? null : Number(r.price),
     isPublished: r.is_published === undefined ? true : Boolean(r.is_published),
@@ -562,7 +646,8 @@ function createPostgresDriver(connectionString) {
     payment: r.payment,
     total: Number(r.total),
     estimatedPrice: Number(r.estimated_price ?? r.total ?? 0),
-    finalPrice: r.final_price === null || r.final_price === undefined ? null : Number(r.final_price),
+    finalPrice:
+      r.final_price === null || r.final_price === undefined ? null : Number(r.final_price),
     ownerNote: r.owner_note || '',
     latitude: r.latitude === null || r.latitude === undefined ? null : Number(r.latitude),
     longitude: r.longitude === null || r.longitude === undefined ? null : Number(r.longitude),
@@ -575,6 +660,7 @@ function createPostgresDriver(connectionString) {
       r.published_portfolio_id === null || r.published_portfolio_id === undefined
         ? null
         : Number(r.published_portfolio_id),
+    paymentRecords: Array.isArray(r.payment_records) ? r.payment_records : [],
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
   });
 
@@ -617,14 +703,39 @@ function createPostgresDriver(connectionString) {
       await pool.query(
         `INSERT INTO products (id, name, category, price, image, images, description, material, production_time, stock_status, featured)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (id) DO NOTHING`,
-        [p.id, p.name, p.category, p.price, p.image, JSON.stringify(p.images), p.description, p.material, p.productionTime, p.stockStatus, p.featured],
+        [
+          p.id,
+          p.name,
+          p.category,
+          p.price,
+          p.image,
+          JSON.stringify(p.images),
+          p.description,
+          p.material,
+          p.productionTime,
+          p.stockStatus,
+          p.featured,
+        ],
       );
     }
     for (const c of snap.customPortfolio) {
       await pool.query(
         `INSERT INTO custom_portfolio (id, name, type_key, category, size, finish, city, year, description, image, images, preset)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (id) DO NOTHING`,
-        [c.id, c.name, c.typeKey || 'lainnya', c.category, c.size, c.finish, c.city, c.year, c.description, c.image, JSON.stringify(c.images), c.preset ? JSON.stringify(c.preset) : null],
+        [
+          c.id,
+          c.name,
+          c.typeKey || 'lainnya',
+          c.category,
+          c.size,
+          c.finish,
+          c.city,
+          c.year,
+          c.description,
+          c.image,
+          JSON.stringify(c.images),
+          c.preset ? JSON.stringify(c.preset) : null,
+        ],
       );
     }
     for (const f of snap.faqs) {
@@ -654,6 +765,20 @@ function createPostgresDriver(connectionString) {
       await seedIfEmpty();
     },
 
+    async getPaymentSettings() {
+      const { rows } = await pool.query(`SELECT value FROM store_settings WHERE key='payment'`);
+      return normalizePaymentSettings(rows[0]?.value);
+    },
+    async updatePaymentSettings(data) {
+      const normalized = normalizePaymentSettings(data);
+      await pool.query(
+        `INSERT INTO store_settings (key, value) VALUES ('payment', $1::jsonb)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        [JSON.stringify(normalized)],
+      );
+      return normalized;
+    },
+
     async getProducts() {
       const { rows } = await pool.query('SELECT * FROM products ORDER BY id DESC');
       return rows.map(mapProduct);
@@ -668,7 +793,19 @@ function createPostgresDriver(connectionString) {
       const { rows } = await pool.query(
         `INSERT INTO products (id, name, category, price, image, images, description, material, production_time, stock_status, featured)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-        [id, data.name, data.category, data.price, norm.image, JSON.stringify(norm.images), data.description, data.material, data.productionTime, data.stockStatus || 'Tersedia', Boolean(data.featured)],
+        [
+          id,
+          data.name,
+          data.category,
+          data.price,
+          norm.image,
+          JSON.stringify(norm.images),
+          data.description,
+          data.material,
+          data.productionTime,
+          data.stockStatus || 'Tersedia',
+          Boolean(data.featured),
+        ],
       );
       return mapProduct(rows[0]);
     },
@@ -680,7 +817,19 @@ function createPostgresDriver(connectionString) {
       const { rows } = await pool.query(
         `UPDATE products SET name=$2, category=$3, price=$4, image=$5, images=$6, description=$7, material=$8, production_time=$9, stock_status=$10, featured=$11
          WHERE id=$1 RETURNING *`,
-        [Number(id), m.name, m.category, m.price, norm.image, JSON.stringify(norm.images), m.description, m.material, m.productionTime, m.stockStatus || 'Tersedia', Boolean(m.featured)],
+        [
+          Number(id),
+          m.name,
+          m.category,
+          m.price,
+          norm.image,
+          JSON.stringify(norm.images),
+          m.description,
+          m.material,
+          m.productionTime,
+          m.stockStatus || 'Tersedia',
+          Boolean(m.featured),
+        ],
       );
       return mapProduct(rows[0]);
     },
@@ -791,6 +940,10 @@ function createPostgresDriver(connectionString) {
       const { rows } = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
       return rows.map(mapOrder);
     },
+    async getOrderById(id) {
+      const { rows } = await pool.query('SELECT * FROM orders WHERE id = $1', [Number(id)]);
+      return rows[0] ? mapOrder(rows[0]) : null;
+    },
     async getOrdersByEmail(email) {
       const { rows } = await pool.query(
         'SELECT * FROM orders WHERE LOWER(customer_email) = LOWER($1) ORDER BY created_at DESC',
@@ -849,10 +1002,14 @@ function createPostgresDriver(connectionString) {
         patch.publishedPortfolioId !== undefined
           ? patch.publishedPortfolioId
           : o.publishedPortfolioId ?? null;
+      const nextPaymentRecords = Array.isArray(patch.paymentRecords)
+        ? patch.paymentRecords
+        : o.paymentRecords || [];
+
       const { rows } = await pool.query(
         `UPDATE orders
          SET status=$2, made_before=$3, made_note=$4, final_price=$5, owner_note=$6, total=$7,
-             finished_photos=$8, published_portfolio_id=$9
+             finished_photos=$8, published_portfolio_id=$9, payment_records=$10
          WHERE id=$1 RETURNING *`,
         [
           Number(id),
@@ -864,10 +1021,11 @@ function createPostgresDriver(connectionString) {
           nextTotal,
           JSON.stringify(nextFinishedPhotos),
           nextPublishedPortfolioId,
+          JSON.stringify(nextPaymentRecords),
         ],
       );
       return mapOrder(rows[0]);
-    },  
+    },
     async deleteOrder(id) {
       const res = await pool.query('DELETE FROM orders WHERE id = $1', [Number(id)]);
       return res.rowCount > 0;
@@ -915,11 +1073,6 @@ function createPostgresDriver(connectionString) {
     async deleteFaq(id) {
       const res = await pool.query('DELETE FROM faqs WHERE id = $1', [Number(id)]);
       return res.rowCount > 0;
-    },
-
-    async getOrderById(id) {
-      const { rows } = await pool.query('SELECT * FROM orders WHERE id = $1', [Number(id)]);
-      return rows[0] ? mapOrder(rows[0]) : null;
     },
 
     async getTestimonials() {
@@ -995,7 +1148,15 @@ function createPostgresDriver(connectionString) {
       const { rows } = await pool.query(
         `INSERT INTO chat_logs (id, user_label, message, reply, intent, source, time_label)
          VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [id, entry.user || 'Pengunjung', entry.message, entry.reply || '', entry.intent || 'lainnya', entry.source || 'fallback', timeLabel],
+        [
+          id,
+          entry.user || 'Pengunjung',
+          entry.message,
+          entry.reply || '',
+          entry.intent || 'lainnya',
+          entry.source || 'fallback',
+          timeLabel,
+        ],
       );
       return mapChat(rows[0]);
     },
@@ -1003,7 +1164,6 @@ function createPostgresDriver(connectionString) {
       await pool.query('DELETE FROM chat_logs');
     },
 
-    /* ---- WISHLIST PER AKUN ---- */
     async getWishlistByEmail(email) {
       const cleanEmail = String(email || '').trim().toLowerCase();
       if (!cleanEmail) return [];
@@ -1034,7 +1194,6 @@ function createPostgresDriver(connectionString) {
       return { active, productId: numId, wishlist };
     },
 
-    /* ---- AKTIVITAS AKUN (SIAP UNTUK AI / DATA SCIENCE) ---- */
     async createActivity(entry) {
       const cleanEmail = String(entry.userEmail || '').trim().toLowerCase();
       if (!cleanEmail) return null;

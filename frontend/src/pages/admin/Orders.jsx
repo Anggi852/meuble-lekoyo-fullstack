@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import {
   ShoppingBag,
   MapPin,
@@ -19,14 +20,27 @@ import {
   Globe,
   EyeOff,
   Sparkles,
+  Receipt,
+  Plus,
+  Trash2,
+  Building2,
+  QrCode,
+  Settings2,
+  ChevronDown,
+  ChevronUp,
+  XCircle,
+  Upload,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useApp } from '../../context/AppContext';
 import { PageHeader, RowActions, confirmDelete } from '../../components/admin/ui';
 import PhotoUploader from '../../components/admin/PhotoUploader';
 import FurniturePreview from '../../components/FurniturePreview';
+import PaymentReceiptModal from '../../components/PaymentReceiptModal';
 import { CUSTOM_CATEGORIES, CUSTOM_TYPE_KEYS, TYPES } from '../../data/custom';
 import { formatRupiah } from '../../utils/format';
+import { compressImageFile } from '../../utils/image';
+import { getPaymentSummary } from '../../utils/payment';
 import { customKey } from '../../utils/sales';
 import { buildCustomerWhatsAppReplyLink } from '../../utils/phone';
 
@@ -51,6 +65,12 @@ const tone = {
   Dibatalkan: 'bg-red-50 text-red-700',
 };
 
+const PAYMENT_BADGE = {
+  Terverifikasi: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+  'Menunggu Verifikasi': 'bg-amber-100 text-amber-800 border-amber-300',
+  Ditolak: 'bg-red-100 text-red-700 border-red-300',
+};
+
 function guessCategoryForOrder(order) {
   const fromType = order?.custom?.design?.type && TYPES[order.custom.design.type]?.label;
   if (fromType && CATEGORY_OPTIONS.includes(fromType)) return fromType;
@@ -62,6 +82,539 @@ function guessCategoryForOrder(order) {
 function guessCityFromAddress(address = '') {
   const parts = String(address).split(',').map((s) => s.trim()).filter(Boolean);
   return parts[parts.length - 1] || 'Kota Jambi';
+}
+
+/* ==================== PENGATURAN REKENING & QRIS DARI DASHBOARD ==================== */
+function PaymentSettingsCard({ settings, onSave }) {
+  const [open, setOpen] = useState(false);
+  const [accounts, setAccounts] = useState(settings?.accounts || []);
+  const [qrisImage, setQrisImage] = useState(settings?.qrisImage || '');
+  const [cashNote, setCashNote] = useState(settings?.cashNote || '');
+  const [tabungNote, setTabungNote] = useState(settings?.tabungNote || '');
+  const [saving, setSaving] = useState(false);
+  const [uploadingQris, setUploadingQris] = useState(false);
+
+  useEffect(() => {
+    setAccounts(settings?.accounts || []);
+    setQrisImage(settings?.qrisImage || '');
+    setCashNote(settings?.cashNote || '');
+    setTabungNote(settings?.tabungNote || '');
+  }, [settings]);
+
+  const addAccountRow = () => {
+    setAccounts((prev) => [
+      ...prev,
+      { id: `acc-${Date.now()}`, bankName: '', accountNumber: '', accountHolder: '' },
+    ]);
+  };
+
+  const updateAccountRow = (idx, field, val) => {
+    setAccounts((prev) => prev.map((a, i) => (i === idx ? { ...a, [field]: val } : a)));
+  };
+
+  const removeAccountRow = (idx) => {
+    setAccounts((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleQrisUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingQris(true);
+    try {
+      const dataUrl = await compressImageFile(file);
+      setQrisImage(dataUrl);
+      toast.success('Gambar QRIS siap disimpan.');
+    } catch (err) {
+      toast.error(err.message || 'Gagal memproses gambar QRIS.');
+    } finally {
+      setUploadingQris(false);
+    }
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const validAccounts = accounts.filter(
+      (a) => a.bankName.trim() && a.accountNumber.trim() && a.accountHolder.trim(),
+    );
+    setSaving(true);
+    try {
+      await onSave({
+        accounts: validAccounts,
+        qrisImage,
+        cashNote: cashNote.trim(),
+        tabungNote: tabungNote.trim(),
+      });
+      toast.success('Pengaturan rekening & info pembayaran berhasil disimpan!');
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mb-5 overflow-hidden rounded-2xl border border-gold/40 bg-white shadow-soft">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition hover:bg-sand/30 sm:px-5"
+      >
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-espresso text-gold-light">
+            <Settings2 size={17} />
+          </span>
+          <div>
+            <p className="text-sm font-bold text-espresso">
+              Pengaturan Rekening Bank, QRIS &amp; Info Pembayaran ({accounts.length} rekening)
+            </p>
+            <p className="text-xs text-muted">
+              Atur rekening tujuan transfer &amp; QRIS yang otomatis muncul saat pelanggan menyetor Sistem Tabung atau membayar Tunai.
+            </p>
+          </div>
+        </div>
+        <span className="inline-flex items-center gap-1 rounded-full bg-sand px-3 py-1 text-xs font-bold text-teak">
+          {open ? (
+            <>
+              Tutup <ChevronUp size={14} />
+            </>
+          ) : (
+            <>
+              Atur Rekening <ChevronDown size={14} />
+            </>
+          )}
+        </span>
+      </button>
+
+      {open && (
+        <form onSubmit={handleSave} className="space-y-4 border-t border-line bg-cream/45 p-4 sm:p-5">
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-teak">
+                <Building2 size={14} /> Daftar Rekening Bank Toko
+              </p>
+              <button
+                type="button"
+                onClick={addAccountRow}
+                className="inline-flex items-center gap-1 rounded-full border border-gold/45 bg-white px-3 py-1 text-xs font-bold text-teak hover:bg-espresso hover:text-gold-light"
+              >
+                <Plus size={13} /> Tambah Rekening
+              </button>
+            </div>
+
+            {accounts.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-line bg-white p-3.5 text-center text-xs text-muted">
+                Belum ada rekening bank. Klik <strong>"+ Tambah Rekening"</strong> untuk menambahkan nomor rekening (BRI, BCA, Mandiri, Bank Jambi, dll).
+              </p>
+            ) : (
+              <div className="space-y-2.5">
+                {accounts.map((acc, idx) => (
+                  <div
+                    key={acc.id || idx}
+                    className="grid gap-2 rounded-xl border border-line bg-white p-3 sm:grid-cols-12"
+                  >
+                    <input
+                      type="text"
+                      value={acc.bankName}
+                      onChange={(e) => updateAccountRow(idx, 'bankName', e.target.value)}
+                      placeholder="Nama Bank (mis. BRI / BCA)"
+                      className="field !py-1.5 text-xs sm:col-span-3"
+                      required
+                    />
+                    <input
+                      type="text"
+                      value={acc.accountNumber}
+                      onChange={(e) => updateAccountRow(idx, 'accountNumber', e.target.value)}
+                      placeholder="Nomor Rekening"
+                      className="field !py-1.5 font-mono text-xs sm:col-span-4"
+                      required
+                    />
+                    <input
+                      type="text"
+                      value={acc.accountHolder}
+                      onChange={(e) => updateAccountRow(idx, 'accountHolder', e.target.value)}
+                      placeholder="Atas Nama (mis. Nanang Suryadi)"
+                      className="field !py-1.5 text-xs sm:col-span-4"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeAccountRow(idx)}
+                      aria-label="Hapus rekening"
+                      className="grid place-items-center rounded-lg border border-red-200 bg-red-50 py-1.5 text-red-600 hover:bg-red-100 sm:col-span-1"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-teak">
+                <QrCode size={14} /> Foto Kode QRIS (Opsional)
+              </p>
+              {qrisImage ? (
+                <div className="relative inline-block rounded-xl border border-gold/40 bg-white p-2">
+                  <img
+                    src={qrisImage}
+                    alt="QRIS Toko"
+                    className="max-h-36 rounded-lg object-contain"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setQrisImage('')}
+                    className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-espresso text-white hover:bg-red-600"
+                    aria-label="Hapus QRIS"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-gold/50 bg-white px-3 py-4 text-xs font-semibold text-teak hover:bg-sand/40">
+                  <Upload size={15} />
+                  <span>{uploadingQris ? 'Memproses...' : 'Upload Gambar QRIS'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleQrisUpload}
+                    disabled={uploadingQris}
+                    className="sr-only"
+                  />
+                </label>
+              )}
+            </div>
+
+            <div className="space-y-2.5">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-bark">
+                  Keterangan Pembayaran Tunai
+                </label>
+                <textarea
+                  rows={2}
+                  value={cashNote}
+                  onChange={(e) => setCashNote(e.target.value)}
+                  className="field !py-1.5 text-xs"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-bark">
+                  Keterangan Sistem Tabung
+                </label>
+                <textarea
+                  rows={2}
+                  value={tabungNote}
+                  onChange={(e) => setTabungNote(e.target.value)}
+                  className="field !py-1.5 text-xs"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end border-t border-line pt-3">
+            <button type="submit" disabled={saving} className="btn-primary !min-h-[38px] !px-5 text-xs">
+              {saving ? 'Menyimpan...' : 'Simpan Pengaturan Pembayaran'}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+/* ==================== PANEL PEMBAYARAN & VERIFIKASI SETORAN DI TIAP PESANAN ==================== */
+function OrderPaymentAdminPanel({
+  order,
+  onRecordPayment,
+  onVerifyPayment,
+  onDeletePayment,
+  onOpenReceipt,
+  onOpenPhoto,
+}) {
+  const summary = getPaymentSummary(order);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState('Tunai di Toko');
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [rejectingId, setRejectingId] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+
+  if (summary.bill <= 0) return null;
+
+  const handleManualAdd = async (e) => {
+    e.preventDefault();
+    const numeric = Number(String(amount).replace(/[^\d]/g, ''));
+    if (!numeric || numeric < 1000) {
+      toast.error('Masukkan nominal pembayaran minimal Rp 1.000.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onRecordPayment(order.id, {
+        amount: numeric,
+        date,
+        method,
+        note: note.trim() || (summary.isTabung ? 'Setoran Tabungan (dicatat Owner)' : 'Pembayaran Tunai'),
+      });
+      toast.success('Pembayaran dicatat & langsung terverifikasi.');
+      setAmount('');
+      setNote('');
+      setShowAddForm(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 rounded-xl border border-blue-200/80 bg-blue-50/35 p-3.5 sm:p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="flex items-center gap-1.5 text-sm font-bold text-espresso">
+            <Wallet size={15} className="text-teak" />
+            Pelacak Pembayaran ({order.payment})
+          </p>
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+              summary.isPaidOff
+                ? 'bg-emerald-600 text-white'
+                : summary.paidAmount > 0
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-white text-muted border border-line'
+            }`}
+          >
+            {summary.isPaidOff ? 'LUNAS' : `${summary.statusLabel} (${summary.percent}%)`}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {!summary.isPaidOff && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddForm((v) => !v);
+                if (!amount && summary.remaining > 0) setAmount(String(summary.remaining));
+              }}
+              className="btn-primary !min-h-[34px] !px-3 text-xs"
+            >
+              <Plus size={13} className="text-gold-light" /> Catat Pembayaran
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onOpenReceipt(order)}
+            className="btn-soft !min-h-[34px] !px-3 text-xs"
+          >
+            <Receipt size={13} className="text-gold-dark" />
+            {summary.isPaidOff ? 'Bukti Pelunasan' : 'Kwitansi'}
+          </button>
+        </div>
+      </div>
+
+      {/* Ringkasan Nominal */}
+      <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl border border-line/80 bg-white p-2.5 text-xs">
+        <div>
+          <span className="text-muted">Tagihan Final:</span>
+          <p className="font-bold text-espresso">{formatRupiah(summary.bill)}</p>
+        </div>
+        <div>
+          <span className="text-muted">Terverifikasi:</span>
+          <p className="font-bold text-emerald-700">{formatRupiah(summary.paidAmount)}</p>
+        </div>
+        <div>
+          <span className="text-muted">Sisa Tagihan:</span>
+          <p className={`font-extrabold ${summary.isPaidOff ? 'text-emerald-700' : 'text-teak'}`}>
+            {summary.isPaidOff ? 'Rp 0 (LUNAS)' : formatRupiah(summary.remaining)}
+          </p>
+        </div>
+      </div>
+
+      {/* Form Catat Pembayaran Manual oleh Owner */}
+      {showAddForm && (
+        <form
+          onSubmit={handleManualAdd}
+          className="mt-3 grid gap-2.5 rounded-xl border border-gold/40 bg-white p-3 sm:grid-cols-12"
+        >
+          <div className="sm:col-span-3">
+            <label className="mb-1 block text-[11px] font-medium text-muted">Nominal (Rp)</label>
+            <input
+              type="number"
+              min="1000"
+              step="1000"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="Nominal"
+              className="field !py-1.5 text-xs font-bold"
+              required
+            />
+          </div>
+          <div className="sm:col-span-3">
+            <label className="mb-1 block text-[11px] font-medium text-muted">Metode</label>
+            <select
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              className="field !py-1.5 text-xs"
+            >
+              <option value="Tunai di Toko">Tunai di Toko</option>
+              <option value="Transfer Bank">Transfer Bank</option>
+              <option value="QRIS">QRIS</option>
+            </select>
+          </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-[11px] font-medium text-muted">Tanggal</label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="field !py-1.5 text-xs"
+              required
+            />
+          </div>
+          <div className="sm:col-span-4">
+            <label className="mb-1 block text-[11px] font-medium text-muted">Catatan</label>
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Mis. DP / Setoran ke-1"
+                className="field flex-1 !py-1.5 text-xs"
+              />
+              <button type="submit" disabled={saving} className="btn-primary !min-h-[34px] !px-3 text-xs">
+                {saving ? '...' : 'Simpan'}
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
+
+      {/* Daftar Bukti Pembayaran / Setoran Tabungan */}
+      {summary.records.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {summary.records.map((rec, idx) => (
+            <div
+              key={rec.id || idx}
+              className="rounded-xl border border-line bg-white p-2.5 text-xs"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-bold text-espresso">{formatRupiah(rec.amount)}</span>
+                    <span className="text-muted">· {rec.method}</span>
+                    {rec.accountLabel && <span className="text-muted">({rec.accountLabel})</span>}
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[10.5px] font-bold ${
+                        PAYMENT_BADGE[rec.status] || 'bg-sand text-bark'
+                      }`}
+                    >
+                      {rec.status}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-muted">
+                    {rec.date || (rec.createdAt || '').slice(0, 10)}
+                    {rec.note ? ` · ${rec.note}` : ''}
+                  </p>
+                  {rec.status === 'Ditolak' && rec.rejectReason && (
+                    <p className="mt-0.5 font-medium text-red-600">Alasan: {rec.rejectReason}</p>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {rec.proofImage && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenPhoto({
+                          src: rec.proofImage,
+                          name: `Bukti Bayar ${order.name} — ${formatRupiah(rec.amount)}`,
+                        })
+                      }
+                      className="inline-flex items-center gap-1 rounded-lg border border-gold/40 bg-cream px-2.5 py-1 font-semibold text-teak hover:bg-gold/20"
+                    >
+                      <ZoomIn size={12} /> Lihat Bukti
+                    </button>
+                  )}
+
+                  {rec.status === 'Menunggu Verifikasi' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await onVerifyPayment(order.id, rec.id, { status: 'Terverifikasi' });
+                          toast.success('Pembayaran diverifikasi!');
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 font-bold text-white hover:bg-emerald-700"
+                      >
+                        <CheckCircle2 size={12} /> Verifikasi
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRejectingId(rec.id);
+                          setRejectReason('');
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 font-semibold text-red-700 hover:bg-red-100"
+                      >
+                        <XCircle size={12} /> Tolak
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      confirmDelete(`catatan pembayaran ${formatRupiah(rec.amount)}`, () =>
+                        onDeletePayment(order.id, rec.id),
+                      )
+                    }
+                    aria-label="Hapus catatan pembayaran"
+                    className="rounded-lg p-1.5 text-muted hover:bg-red-50 hover:text-red-600"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+
+              {rejectingId === rec.id && (
+                <div className="mt-2 flex gap-1.5 border-t border-line pt-2">
+                  <input
+                    type="text"
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    placeholder="Alasan penolakan (mis. Foto buram / nominal tidak sesuai)"
+                    className="field flex-1 !py-1 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await onVerifyPayment(order.id, rec.id, {
+                        status: 'Ditolak',
+                        rejectReason: rejectReason.trim() || 'Bukti pembayaran tidak valid',
+                      });
+                      setRejectingId(null);
+                      toast.info('Pembayaran ditolak.');
+                    }}
+                    className="rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white"
+                  >
+                    Konfirmasi Tolak
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRejectingId(null)}
+                    className="rounded-lg border border-line px-2.5 py-1 text-xs"
+                  >
+                    Batal
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function CustomDesignPanel({ custom, onOpenPhoto }) {
@@ -330,7 +883,6 @@ function FinishedOrderPanel({
         )}
       </div>
 
-      {/* Upload Foto Barang Jadi */}
       <div className="mt-3.5">
         <PhotoUploader value={photos} onChange={setPhotos} max={4} />
         <div className="mt-2.5 flex justify-end">
@@ -345,7 +897,6 @@ function FinishedOrderPanel({
         </div>
       </div>
 
-      {/* Feedback Pemesan */}
       <div className="mt-4 rounded-xl border border-gold/30 bg-white p-3.5">
         <p className="text-xs font-bold uppercase tracking-wider text-gold-dark">
           Pemesan &amp; Feedback Pelanggan
@@ -377,7 +928,6 @@ function FinishedOrderPanel({
         )}
       </div>
 
-      {/* Kontrol Persetujuan Publikasi Khusus Custom */}
       {isCustom && (
         <div className="mt-4 space-y-3 rounded-xl border border-gold/35 bg-white p-3.5">
           <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-teak">
@@ -568,9 +1118,15 @@ export default function Orders() {
     removeOrder,
     publishCustomOrder,
     togglePortfolioPublish,
+    submitOrderPayment,
+    verifyOrderPayment,
+    deleteOrderPayment,
+    paymentSettings,
+    savePaymentSettings,
   } = useApp();
   const [filter, setFilter] = useState('Semua');
   const [lightboxPhoto, setLightboxPhoto] = useState(null);
+  const [receiptOrder, setReceiptOrder] = useState(null);
 
   const list =
     filter === 'Semua'
@@ -581,8 +1137,11 @@ export default function Orders() {
     <div>
       <PageHeader
         title="Pesanan masuk"
-        desc="Setiap pengajuan masuk dengan kode unik dan menunggu penetapan harga dari owner. Setelah pesanan berstatus Selesai, unggah foto produk jadi dan setujui publikasinya ke Karya Pernah Dicustom."
+        desc="Tetapkan harga final, verifikasi setoran Sistem Tabung / Tunai, cetak bukti pelunasan, serta unggah foto hasil jadi untuk dipublikasikan ke Karya Pernah Dicustom."
       />
+
+      {/* Pengaturan Rekening Bank, QRIS & Info Pembayaran langsung dari Dashboard */}
+      <PaymentSettingsCard settings={paymentSettings} onSave={savePaymentSettings} />
 
       <div className="mb-5 flex items-start gap-3 rounded-2xl border border-sage/30 bg-white/95 p-4 shadow-soft">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-sage/10 text-sage">
@@ -776,6 +1335,16 @@ export default function Orders() {
                 {/* Kotak Penetapan Harga Final Owner */}
                 <OwnerPricingBox order={o} onSave={updateOrder} />
 
+                {/* Panel Verifikasi Pembayaran, Sisa Tagihan Sistem Tabung & Kwitansi */}
+                <OrderPaymentAdminPanel
+                  order={o}
+                  onRecordPayment={submitOrderPayment}
+                  onVerifyPayment={verifyOrderPayment}
+                  onDeletePayment={deleteOrderPayment}
+                  onOpenReceipt={setReceiptOrder}
+                  onOpenPhoto={setLightboxPhoto}
+                />
+
                 {/* Panel Foto Hasil Jadi & Persetujuan Publikasi saat Pesanan Selesai */}
                 {displayStatus === 'Selesai' && (
                   <FinishedOrderPanel
@@ -835,6 +1404,14 @@ export default function Orders() {
         </div>
       )}
 
+      {/* Modal Kwitansi / Bukti Pelunasan */}
+      <AnimatePresence>
+        {receiptOrder && (
+          <PaymentReceiptModal order={receiptOrder} onClose={() => setReceiptOrder(null)} />
+        )}
+      </AnimatePresence>
+
+      {/* Lightbox Perbesar Foto */}
       {lightboxPhoto && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-espresso/85 p-4 backdrop-blur-sm"

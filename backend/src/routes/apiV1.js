@@ -18,9 +18,11 @@ import {
   customPortfolioSchema,
   orderCreateSchema,
   orderUpdateSchema,
+  paymentRecordCreateSchema,
+  paymentRecordUpdateSchema,
+  paymentSettingsSchema,
   saleCreateSchema,
   faqSchema,
-  testimonialSchema,
   chatRequestSchema,
   viewMetricSchema,
 } from '../validators/schemas.js';
@@ -29,10 +31,8 @@ import { buildAnalyticsSummary } from '../services/analyticsService.js';
 
 const router = Router();
 
-// Helper wrapper agar error async langsung diteruskan ke errorHandler
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-// Helper aman agar pencatatan aktivitas tidak pernah mengganggu alur utama user
 async function logActivitySafe(payload) {
   if (!payload?.userEmail) return null;
   try {
@@ -60,25 +60,49 @@ router.get('/store', (_req, res) => {
   res.json({ success: true, data: STORE });
 });
 
-// Mengambil seluruh data publik dalam 1 request awal untuk mempercepat muat Front-End
 router.get(
   '/bootstrap',
   optionalAuth,
   asyncHandler(async (req, res) => {
     const isOwner = req.user?.role === 'owner';
-    const [products, rawCustomPortfolio, faqs, testimonials, metrics] = await Promise.all([
-      db.getProducts(),
-      db.getCustomPortfolio(),
-      db.getFaqs(),
-      db.getTestimonials(),
-      db.getMetrics(),
-    ]);
+    const [products, rawCustomPortfolio, faqs, testimonials, metrics, paymentSettings] =
+      await Promise.all([
+        db.getProducts(),
+        db.getCustomPortfolio(),
+        db.getFaqs(),
+        db.getTestimonials(),
+        db.getMetrics(),
+        db.getPaymentSettings(),
+      ]);
     const customPortfolio = isOwner
       ? rawCustomPortfolio
       : rawCustomPortfolio.filter((c) => c.isPublished !== false);
     res.json({
       success: true,
-      data: { products, customPortfolio, faqs, testimonials, metrics, store: STORE },
+      data: { products, customPortfolio, faqs, testimonials, metrics, paymentSettings, store: STORE },
+    });
+  }),
+);
+
+/* -------------------- PENGATURAN PEMBAYARAN (REKENING & QRIS) -------------------- */
+router.get(
+  '/settings/payment',
+  asyncHandler(async (_req, res) => {
+    const data = await db.getPaymentSettings();
+    res.json({ success: true, data });
+  }),
+);
+
+router.put(
+  '/settings/payment',
+  requireAdmin,
+  validate(paymentSettingsSchema),
+  asyncHandler(async (req, res) => {
+    const updated = await db.updatePaymentSettings(req.body);
+    res.json({
+      success: true,
+      message: 'Pengaturan rekening & pembayaran berhasil disimpan.',
+      data: updated,
     });
   }),
 );
@@ -147,7 +171,7 @@ router.get('/auth/me', requireAuth, (req, res) => {
   res.json({ success: true, data: req.user });
 });
 
-/* -------------------- WISHLIST PER AKUN (SINKRON NEON) -------------------- */
+/* -------------------- WISHLIST PER AKUN -------------------- */
 router.get(
   '/wishlist/me',
   requireAuth,
@@ -196,7 +220,7 @@ router.post(
   }),
 );
 
-/* -------------------- USER ACTIVITIES (PELANGGAN, OWNER & AI/DS) -------------------- */
+/* -------------------- USER ACTIVITIES -------------------- */
 router.get(
   '/activities/me',
   requireAuth,
@@ -358,7 +382,7 @@ router.delete(
   }),
 );
 
-/* -------------------- ORDERS -------------------- */
+/* -------------------- ORDERS & PEMBAYARAN (TUNAI / TABUNG) -------------------- */
 router.get(
   '/orders',
   requireAdmin,
@@ -427,13 +451,161 @@ router.patch(
   validate(orderUpdateSchema),
   asyncHandler(async (req, res) => {
     const patch = { ...req.body };
-    // Jika owner mengisi harga final tanpa memilih status manual, otomatis ubah ke 'Harga Ditetapkan'
     if (patch.finalPrice !== undefined && patch.finalPrice !== null && !patch.status) {
       patch.status = 'Harga Ditetapkan';
     }
     const updated = await db.updateOrder(req.params.id, patch);
     if (!updated) return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
     return res.json({ success: true, message: 'Pesanan diperbarui.', data: updated });
+  }),
+);
+
+// Tambah setoran tabungan / pembayaran tunai (Pelanggan upload bukti -> Menunggu Verifikasi; Owner catat -> Terverifikasi)
+router.post(
+  '/orders/:id/payments',
+  requireAuth,
+  validate(paymentRecordCreateSchema),
+  asyncHandler(async (req, res) => {
+    const order = await db.getOrderById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
+    }
+
+    const isOwner = req.user?.role === 'owner';
+    if (!isOwner) {
+      if (String(order.customerEmail || '').toLowerCase() !== String(req.user?.email || '').toLowerCase()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Anda tidak berhak mengirim pembayaran untuk pesanan ini.',
+        });
+      }
+      if (order.status === 'Dibatalkan') {
+        return res.status(400).json({
+          success: false,
+          message: 'Pesanan yang dibatalkan tidak dapat menerima pembayaran.',
+        });
+      }
+      if (order.finalPrice == null || Number(order.finalPrice) <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Menunggu Pak Nanang menetapkan Harga Final terlebih dahulu sebelum melakukan pembayaran.',
+        });
+      }
+      if (req.body.method !== 'Tunai di Toko' && !req.body.proofImage) {
+        return res.status(400).json({
+          success: false,
+          message: 'Mohon unggah foto bukti transfer / pembayaran QRIS.',
+        });
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const record = {
+      id: Date.now(),
+      amount: Number(req.body.amount),
+      date: req.body.date || nowIso.slice(0, 10),
+      method: req.body.method || 'Transfer Bank',
+      accountLabel: req.body.accountLabel || '',
+      note: req.body.note || '',
+      proofImage: req.body.proofImage || '',
+      status: isOwner ? 'Terverifikasi' : 'Menunggu Verifikasi',
+      verifiedBy: isOwner ? req.user?.name || STORE.owner : '',
+      verifiedAt: isOwner ? nowIso : '',
+      rejectReason: '',
+      recordedBy: isOwner ? 'owner' : 'customer',
+      createdAt: nowIso,
+    };
+
+    const nextRecords = [...(Array.isArray(order.paymentRecords) ? order.paymentRecords : []), record];
+    const updated = await db.updateOrder(order.id, { paymentRecords: nextRecords });
+
+    if (!isOwner && req.user?.email) {
+      await logActivitySafe({
+        userEmail: req.user.email,
+        userName: req.user.name,
+        action: 'payment_submit',
+        targetType: 'order',
+        targetId: String(order.orderCode || order.id),
+        label: `Mengirim bukti bayar Rp ${record.amount.toLocaleString('id-ID')} untuk ${order.product}`,
+        metadata: {
+          orderId: order.id,
+          orderCode: order.orderCode,
+          amount: record.amount,
+          method: record.method,
+        },
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: isOwner
+        ? 'Pembayaran berhasil dicatat & terverifikasi.'
+        : 'Bukti pembayaran terkirim! Menunggu verifikasi Pak Nanang.',
+      data: updated,
+    });
+  }),
+);
+
+// Verifikasi atau tolak bukti pembayaran oleh Owner
+router.patch(
+  '/orders/:id/payments/:paymentId',
+  requireAdmin,
+  validate(paymentRecordUpdateSchema),
+  asyncHandler(async (req, res) => {
+    const order = await db.getOrderById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
+    }
+    const targetId = Number(req.params.paymentId);
+    const records = Array.isArray(order.paymentRecords) ? order.paymentRecords : [];
+    const idx = records.findIndex((r) => Number(r.id) === targetId);
+    if (idx === -1) {
+      return res.status(404).json({ success: false, message: 'Catatan pembayaran tidak ditemukan.' });
+    }
+
+    const nowIso = new Date().toISOString();
+    const updatedRecord = {
+      ...records[idx],
+      status: req.body.status,
+      rejectReason: req.body.status === 'Ditolak' ? req.body.rejectReason || '' : '',
+      verifiedBy: req.user?.name || STORE.owner,
+      verifiedAt: nowIso,
+    };
+    const nextRecords = records.map((r, i) => (i === idx ? updatedRecord : r));
+    const updated = await db.updateOrder(order.id, { paymentRecords: nextRecords });
+
+    return res.json({
+      success: true,
+      message:
+        req.body.status === 'Terverifikasi'
+          ? 'Pembayaran berhasil diverifikasi.'
+          : 'Pembayaran ditolak.',
+      data: updated,
+    });
+  }),
+);
+
+// Hapus catatan pembayaran (Owner)
+router.delete(
+  '/orders/:id/payments/:paymentId',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const order = await db.getOrderById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
+    }
+    const targetId = Number(req.params.paymentId);
+    const records = Array.isArray(order.paymentRecords) ? order.paymentRecords : [];
+    const nextRecords = records.filter((r) => Number(r.id) !== targetId);
+    if (nextRecords.length === records.length) {
+      return res.status(404).json({ success: false, message: 'Catatan pembayaran tidak ditemukan.' });
+    }
+    const updated = await db.updateOrder(order.id, { paymentRecords: nextRecords });
+    return res.json({
+      success: true,
+      message: 'Catatan pembayaran dihapus.',
+      data: updated,
+    });
   }),
 );
 
@@ -568,7 +740,6 @@ router.post(
   }),
 );
 
-// Endpoint khusus pelanggan memberi ulasan untuk pesanan berstatus "Selesai"
 router.post(
   '/testimonials/review',
   requireAuth,
@@ -631,7 +802,7 @@ router.post(
       source: 'customer',
       showOnHome: true,
     });
-    // Jika pesanan custom ini sudah dipublikasikan ke galeri, ikut perbarui feedback & rating-nya
+
     try {
       const linkedPortfolio = await db.getCustomPortfolioByOrderId(order.id);
       if (linkedPortfolio) {
@@ -644,6 +815,7 @@ router.post(
     } catch {
       /* abaikan bila gagal sinkronisasi */
     }
+
     await logActivitySafe({
       userEmail: req.user.email,
       userName: req.user.name,
@@ -762,7 +934,7 @@ router.delete(
   }),
 );
 
-/* -------------------- METRICS & ANALYTICS (DATA SCIENCE) -------------------- */
+/* -------------------- METRICS & ANALYTICS -------------------- */
 router.get(
   '/metrics',
   asyncHandler(async (_req, res) => {

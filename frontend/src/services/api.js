@@ -96,6 +96,10 @@ export const api = {
   health: () => http.get('/health').then((r) => r.data),
   bootstrap: () => http.get('/bootstrap').then((r) => r.data.data),
 
+  // Pengaturan Pembayaran (Rekening Bank & QRIS)
+  getPaymentSettings: () => http.get('/settings/payment').then((r) => r.data.data),
+  updatePaymentSettings: (payload) => http.put('/settings/payment', payload).then((r) => r.data.data),
+
   // Auth (Owner Password & Google Customer/Owner)
   login: (password) => http.post('/auth/login', { password }).then((r) => r.data.data),
   loginGoogle: (credential) => http.post('/auth/google', { credential }).then((r) => r.data.data),
@@ -127,12 +131,18 @@ export const api = {
     http.put(`/custom-portfolio/${id}`, payload).then((r) => r.data.data),
   deleteCustomPortfolio: (id) => http.delete(`/custom-portfolio/${id}`).then((r) => r.data),
 
-  // Orders
+  // Orders & Pembayaran (Tunai / Sistem Tabung)
   getOrders: () => http.get('/orders').then((r) => r.data.data),
   getMyOrders: () => http.get('/orders/me').then((r) => r.data.data),
   createOrder: (payload) => http.post('/orders', payload).then((r) => r.data.data),
   updateOrder: (id, patch) => http.patch(`/orders/${id}`, patch).then((r) => r.data.data),
   deleteOrder: (id) => http.delete(`/orders/${id}`).then((r) => r.data),
+  addOrderPayment: (orderId, payload) =>
+    http.post(`/orders/${orderId}/payments`, payload).then((r) => r.data.data),
+  verifyOrderPayment: (orderId, paymentId, payload) =>
+    http.patch(`/orders/${orderId}/payments/${paymentId}`, payload).then((r) => r.data.data),
+  deleteOrderPayment: (orderId, paymentId) =>
+    http.delete(`/orders/${orderId}/payments/${paymentId}`).then((r) => r.data.data),
 
   // Sales
   getSales: () => http.get('/sales').then((r) => r.data.data),

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { toast } from 'sonner';
 import { products as seedProducts } from '../data/products';
 import { getProductImages } from '../utils/image';
+import { DEFAULT_PAYMENT_SETTINGS } from '../utils/payment';
 import { defaultFaqs, defaultTestimonials } from '../data/content';
 import { defaultCustomPortfolio } from '../data/customPortfolio';
 import {
@@ -54,6 +55,7 @@ export function AppProvider({ children }) {
   const [faqs, setFaqs] = useState(defaultFaqs);
   const [testimonials, setTestimonials] = useState(defaultTestimonials);
   const [customPortfolio, setCustomPortfolio] = useState(defaultCustomPortfolio);
+  const [paymentSettings, setPaymentSettings] = useState(DEFAULT_PAYMENT_SETTINGS);
   const [chatLogs, setChatLogs] = useState([]);
   const [orders, setOrders] = useState([]);
   const [myOrders, setMyOrders] = useState([]);
@@ -63,12 +65,10 @@ export function AppProvider({ children }) {
   const [visits, setVisits] = useState(0);
   const [analyticsSummary, setAnalyticsSummary] = useState(null);
 
-  // Jika sudah login akun Google, tunggu sinkronisasi dari database agar tidak tercampur localStorage
   const [savedWishlist, setSavedWishlist] = useState(() =>
     getStoredUser()?.email ? [] : readWishlistStorage(),
   );
 
-  // State global untuk membuka & mengirim prompt kontekstual ke Asisten Percakapan Koyo
   const [koyoOpen, setKoyoOpen] = useState(false);
   const [koyoPrompt, setKoyoPrompt] = useState(null);
 
@@ -81,7 +81,6 @@ export function AppProvider({ children }) {
 
   const clearKoyoPrompt = useCallback(() => setKoyoPrompt(null), []);
 
-  // Muat data publik dari Backend API saat aplikasi dibuka
   const loadPublicData = useCallback(async () => {
     setApiLoading(true);
     try {
@@ -90,6 +89,7 @@ export function AppProvider({ children }) {
       if (Array.isArray(data.customPortfolio)) setCustomPortfolio(data.customPortfolio);
       if (Array.isArray(data.faqs)) setFaqs(data.faqs);
       if (Array.isArray(data.testimonials)) setTestimonials(data.testimonials);
+      if (data.paymentSettings) setPaymentSettings(data.paymentSettings);
       if (data.metrics) {
         setVisits(Number(data.metrics.visits) || 0);
         setViews(data.metrics.views || {});
@@ -102,7 +102,6 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  // Muat data terproteksi khusus Owner (orders, sales, chat logs, analytics)
   const loadAdminData = useCallback(async () => {
     if (!getStoredToken()) return;
     try {
@@ -127,7 +126,6 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  // Muat riwayat pesanan milik akun yang sedang login Google
   const loadMyOrders = useCallback(async () => {
     if (!getStoredToken()) {
       setMyOrders([]);
@@ -142,7 +140,6 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  // Muat Favorit milik akun dari Neon PostgreSQL
   const loadMyWishlist = useCallback(async () => {
     if (!getStoredToken()) {
       setSavedWishlist(readWishlistStorage());
@@ -157,7 +154,6 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  // Muat riwayat aktivitas akun
   const loadMyActivities = useCallback(async (limit = 50) => {
     if (!getStoredToken()) {
       setMyActivities([]);
@@ -205,7 +201,6 @@ export function AppProvider({ children }) {
     loadPublicData();
   }, [loadPublicData]);
 
-  // Sinkronkan sesi token, pesanan, favorit, dan aktivitas saat pertama kali buka aplikasi
   useEffect(() => {
     const token = getStoredToken();
     if (!token) return;
@@ -230,7 +225,6 @@ export function AppProvider({ children }) {
       });
   }, [loadMyOrders, loadMyWishlist, loadMyActivities]);
 
-  // Sinkron otomatis antar tab/jendela browser saat kembali aktif
   useEffect(() => {
     if (!user?.email) return undefined;
     const syncAccountState = () => {
@@ -288,13 +282,11 @@ export function AppProvider({ children }) {
 
   const logoutAdmin = logoutUser;
 
-  // Kompatibilitas setter lama
   const setIsLoggedIn = (v) => {
     if (!v) logoutUser();
     else setLoggedInState(true);
   };
 
-  // Hitung terjual per produk = catatan penjualan toko + pesanan online berstatus "Selesai"
   const soldMap = useMemo(() => {
     const m = {};
     const bump = (id, key, qty) => {
@@ -325,7 +317,6 @@ export function AppProvider({ children }) {
     return { onlineUnits, customUnits, offlineUnits, units: onlineUnits + customUnits + offlineUnits, revenue };
   }, [orders, sales, products]);
 
-  // Favorit: sinkron ke database Neon saat login Google, fallback localStorage hanya untuk tamu
   const wishlist = useMemo(
     () => savedWishlist.map((w) => products.find((p) => p.id === w.id)).filter(Boolean),
     [savedWishlist, products],
@@ -335,7 +326,6 @@ export function AppProvider({ children }) {
     const productId = Number(product?.id ?? product);
     if (!Number.isFinite(productId) || productId <= 0) return;
 
-    // Jika sudah login akun Google -> simpan ke database agar sinkron lintas perangkat
     if (user?.email && getStoredToken()) {
       const previous = savedWishlist;
       const exists = previous.some((i) => i.id === productId);
@@ -357,7 +347,6 @@ export function AppProvider({ children }) {
       return;
     }
 
-    // Pengunjung tamu (belum login) -> simpan sementara di browser
     setSavedWishlist((prev) => {
       const next = prev.some((i) => i.id === productId)
         ? prev.filter((i) => i.id !== productId)
@@ -371,7 +360,19 @@ export function AppProvider({ children }) {
     });
   };
 
-  /* -------------------- CRUD PRODUK (AXIOS -> /api/v1/products) -------------------- */
+  /* -------------------- PENGATURAN PEMBAYARAN (REKENING & QRIS) -------------------- */
+  const savePaymentSettings = async (payload) => {
+    try {
+      const saved = await api.updatePaymentSettings(payload);
+      setPaymentSettings(saved);
+      return saved;
+    } catch (err) {
+      toast.error(extractApiError(err, 'Gagal menyimpan pengaturan rekening & pembayaran.'));
+      throw err;
+    }
+  };
+
+  /* -------------------- CRUD PRODUK -------------------- */
   const saveProduct = async (p) => {
     const imgs = getProductImages(p);
     const payload = { ...p, images: imgs, image: imgs[0]?.url || p.image || '' };
@@ -515,7 +516,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  /* -------------------- PESANAN & PENJUALAN -------------------- */
+  /* -------------------- PESANAN, PEMBAYARAN & PENJUALAN -------------------- */
   const addOrder = async (order) => {
     try {
       const created = await api.createOrder(order);
@@ -536,6 +537,7 @@ export function AppProvider({ children }) {
         ...order,
         id: Date.now(),
         status: 'Menunggu Harga Owner',
+        paymentRecords: [],
         createdAt: new Date().toISOString(),
       };
       setOrders((prev) => [fallback, ...prev]);
@@ -558,6 +560,41 @@ export function AppProvider({ children }) {
       setOrders((prev) => prev.map((o) => (o.id === id ? updated : o)));
     } catch (err) {
       toast.error(extractApiError(err, 'Gagal memperbarui pesanan.'));
+    }
+  };
+
+  const submitOrderPayment = async (orderId, payload) => {
+    try {
+      const updated = await api.addOrderPayment(orderId, payload);
+      setOrders((prev) => prev.map((o) => (Number(o.id) === Number(orderId) ? updated : o)));
+      setMyOrders((prev) => prev.map((o) => (Number(o.id) === Number(orderId) ? updated : o)));
+      if (user?.email && !isLoggedIn) loadMyActivities();
+      return updated;
+    } catch (err) {
+      toast.error(extractApiError(err, 'Gagal mengirim data pembayaran.'));
+      throw err;
+    }
+  };
+
+  const verifyOrderPayment = async (orderId, paymentId, payload) => {
+    try {
+      const updated = await api.verifyOrderPayment(orderId, paymentId, payload);
+      setOrders((prev) => prev.map((o) => (Number(o.id) === Number(orderId) ? updated : o)));
+      return updated;
+    } catch (err) {
+      toast.error(extractApiError(err, 'Gagal memperbarui status verifikasi pembayaran.'));
+      throw err;
+    }
+  };
+
+  const deleteOrderPayment = async (orderId, paymentId) => {
+    try {
+      const updated = await api.deleteOrderPayment(orderId, paymentId);
+      setOrders((prev) => prev.map((o) => (Number(o.id) === Number(orderId) ? updated : o)));
+      return updated;
+    } catch (err) {
+      toast.error(extractApiError(err, 'Gagal menghapus catatan pembayaran.'));
+      throw err;
     }
   };
 
@@ -593,7 +630,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  /* -------------------- GEN AI CHAT (MELALUI BACKEND) -------------------- */
+  /* -------------------- GEN AI CHAT -------------------- */
   const sendKoyoMessage = async ({ message, activeProductId = null }) => {
     const res = await api.sendChat({ message, activeProductId });
     if (res?.log) {
@@ -678,6 +715,8 @@ export function AppProvider({ children }) {
     removeCustomPortfolio,
     publishCustomOrder,
     togglePortfolioPublish,
+    paymentSettings,
+    savePaymentSettings,
     chatLogs,
     addChatLog,
     sendKoyoMessage,
@@ -691,6 +730,9 @@ export function AppProvider({ children }) {
     addOrder,
     updateOrderStatus,
     updateOrder,
+    submitOrderPayment,
+    verifyOrderPayment,
+    deleteOrderPayment,
     removeOrder,
     sales,
     addSale,
