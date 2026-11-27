@@ -1,10 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useForm, useWatch } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { Loader2, MapPin, MessageCircle, Ruler, ShieldCheck, X } from 'lucide-react';
+import { Loader2, MapPin, Ruler, ShieldCheck, ShoppingBag, X } from 'lucide-react';
 import Modal from './Modal';
-import { buildWhatsAppLink } from '../services/whatsapp';
 import { formatRupiah } from '../utils/format';
 import { getPrimaryImage } from '../utils/image';
 import { ID_PHONE_REGEX, normalizePhone } from '../utils/phone';
@@ -28,7 +28,7 @@ const schema = yup.object({
   payment: yup.string().oneOf(['Tunai', 'Tabung'], 'Pilih metode pembayaran').required('Pilih metode pembayaran'),
   agreedToTerms: yup
     .boolean()
-    .oneOf([true], 'Centang persetujuan konfirmasi WhatsApp terlebih dahulu')
+    .oneOf([true], 'Centang persetujuan ketentuan pesanan terlebih dahulu')
     .required(),
 }).required();
 
@@ -45,7 +45,8 @@ const Err = ({ e }) =>
   ) : null;
 
 export default function OrderModal({ product, customItem, onClose }) {
-  const { addOrder, user } = useApp();
+  const { addOrder, user, isOwner } = useApp();
+  const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [locating, setLocating] = useState(false);
   const [coords, setCoords] = useState(null);
@@ -153,23 +154,18 @@ export default function OrderModal({ product, customItem, onClose }) {
           };
 
       const created = await addOrder(payload);
-      const orderCode = created?.orderCode ? ` [${created.orderCode}]` : '';
-      const waProductLabel = isCustomDirect
-        ? `${customItem?.name || 'Karya Custom'} (${customItem?.size || 'Model Sama'}, ${customItem?.finish || 'Natural Jati'})${orderCode}`
-        : `${product?.name || 'Produk Katalog'}${orderCode}`;
+      const orderCode = created?.orderCode ? ` (${created.orderCode})` : '';
 
-      window.open(
-        buildWhatsAppLink({
-          ...data,
-          phone: cleanPhone,
-          product: waProductLabel,
-        }),
-        '_blank',
-      );
       toast.success(
-        `Pengajuan pesanan${orderCode} tercatat (Menunggu Harga Owner). Membuka WhatsApp Pak Nanang...`,
+        user && !isOwner
+          ? `Pesanan${orderCode} berhasil diajukan! Pantau penetapan harga di Pesanan Saya.`
+          : `Pesanan${orderCode} berhasil diajukan! Menunggu penetapan harga dari Owner.`,
       );
       onClose();
+
+      if (user && !isOwner) {
+        navigate('/my-orders');
+      }
     } catch {
       // Error validasi/rate limit sudah ditampilkan oleh AppContext
     } finally {
@@ -237,7 +233,7 @@ export default function OrderModal({ product, customItem, onClose }) {
             disabled={submitting}
           />
           <p className="mt-1 text-xs text-muted">
-            Dipakai Pak Nanang untuk memverifikasi pesanan agar terhindar dari pesanan palsu.
+            Dipakai Pak Nanang untuk memverifikasi pesanan dan konfirmasi bila diperlukan.
           </p>
           <Err e={errors.phone} />
         </div>
@@ -322,9 +318,9 @@ export default function OrderModal({ product, customItem, onClose }) {
           </div>
           <p className="mt-2 text-sm text-muted">
             {payment === 'Tabung'
-              ? 'Sistem tabung: uang muka dan jadwal pembayaran disepakati dengan owner lewat WhatsApp. '
+              ? 'Sistem tabung: setelah harga final ditetapkan Owner, setoran bertahap dapat dilakukan langsung di halaman Pesanan Saya. '
               : ''}
-            Harga akhir dan jadwal pembuatan (±{item.productionTime || '2 bulan'}) dikonfirmasi owner.
+            Harga akhir dan jadwal pembuatan (±{item.productionTime || '2 bulan'}) akan muncul di halaman Pesanan Saya.
           </p>
         </div>
 
@@ -338,7 +334,7 @@ export default function OrderModal({ product, customItem, onClose }) {
             />
             <span>
               Saya mengisi data dengan benar dan memahami pesanan ini berstatus{' '}
-              <strong>Menunggu Harga Owner</strong> (baru mulai dikerjakan setelah kesepakatan harga &amp; DP dengan Pak Nanang di WhatsApp).
+              <strong>Menunggu Harga Owner</strong> (dapat dipantau, disetujui, atau dikonfirmasi lewat WhatsApp melalui halaman Pesanan Saya).
             </span>
           </label>
           <Err e={errors.agreedToTerms} />
@@ -347,11 +343,11 @@ export default function OrderModal({ product, customItem, onClose }) {
         <button type="submit" disabled={submitting} className="btn-primary w-full disabled:opacity-65">
           {submitting ? (
             <>
-              <Loader2 size={18} className="animate-spin text-gold-light" /> Mengirim pengajuan...
+              <Loader2 size={18} className="animate-spin text-gold-light" /> Mengirim pesanan...
             </>
           ) : (
             <>
-              <MessageCircle size={19} /> Ajukan &amp; Konfirmasi via WhatsApp
+              <ShoppingBag size={18} className="text-gold-light" /> Ajukan Pesanan
             </>
           )}
         </button>

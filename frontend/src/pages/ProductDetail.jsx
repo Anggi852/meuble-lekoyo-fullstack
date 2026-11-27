@@ -433,7 +433,7 @@ export default function ProductDetail() {
             <>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <button onClick={() => setShowOrder(true)} className="btn-primary btn-shimmer flex-1">
-                  <MessageCircle size={19} /> Pesan via WhatsApp
+                  <MessageCircle size={19} /> Pesan Sekarang
                 </button>
                 <button
                   type="button"
