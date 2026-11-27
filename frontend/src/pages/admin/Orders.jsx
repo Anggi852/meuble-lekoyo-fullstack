@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   ShoppingBag,
   MapPin,
@@ -24,7 +24,6 @@ import {
   Trash2,
   Building2,
   QrCode,
-  Settings2,
   XCircle,
   Upload,
   ChevronDown,
@@ -37,11 +36,13 @@ import {
   Lock,
   AlertTriangle,
   FileText,
+  Landmark,
+  Save,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useApp } from '../../context/AppContext';
 import { PageHeader, confirmDelete } from '../../components/admin/ui';
-import Modal from '../../components/Modal';
 import PhotoUploader from '../../components/admin/PhotoUploader';
 import FurniturePreview from '../../components/FurniturePreview';
 import PaymentReceiptModal from '../../components/PaymentReceiptModal';
@@ -81,7 +82,6 @@ const hasActivePayments = (order) =>
 
 const isOrderPriceLocked = (order) => Boolean(order?.priceAgreedAt) || hasActivePayments(order);
 
-// Otomatis rapikan status lama agar pesanan yang sudah punya harga/pembayaran tidak kembali ke Belum Direspon
 const normalizeOrderStatus = (order) => {
   const s = order?.status;
   const hasFinal = order?.finalPrice != null && Number(order.finalPrice) > 0;
@@ -174,7 +174,7 @@ function guessCityFromAddress(address = '') {
   return parts[parts.length - 1] || 'Kota Jambi';
 }
 
-/* ==================== MODAL PENGATURAN REKENING & QRIS ==================== */
+/* ==================== MODAL PENGATURAN REKENING & QRIS (DESAIN LEGA & RAPI) ==================== */
 function PaymentSettingsModal({ settings, onSave, onClose }) {
   const [accounts, setAccounts] = useState(settings?.accounts || []);
   const [qrisImage, setQrisImage] = useState(settings?.qrisImage || '');
@@ -182,6 +182,14 @@ function PaymentSettingsModal({ settings, onSave, onClose }) {
   const [tabungNote, setTabungNote] = useState(settings?.tabungNote || '');
   const [saving, setSaving] = useState(false);
   const [uploadingQris, setUploadingQris] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
 
   const addAccountRow = () => {
     setAccounts((prev) => [
@@ -202,6 +210,10 @@ function PaymentSettingsModal({ settings, onSave, onClose }) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('File QRIS harus berupa gambar (JPG/PNG).');
+      return;
+    }
     setUploadingQris(true);
     try {
       const dataUrl = await compressImageFile(file);
@@ -227,7 +239,7 @@ function PaymentSettingsModal({ settings, onSave, onClose }) {
         cashNote: cashNote.trim(),
         tabungNote: tabungNote.trim(),
       });
-      toast.success('Rekening & info pembayaran disimpan.');
+      toast.success('Pengaturan rekening & QRIS berhasil disimpan.');
       onClose();
     } finally {
       setSaving(false);
@@ -235,130 +247,313 @@ function PaymentSettingsModal({ settings, onSave, onClose }) {
   };
 
   return (
-    <Modal title="Pengaturan Rekening Bank & QRIS" onClose={onClose}>
-      <form onSubmit={handleSave} className="space-y-4">
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-teak">
-              <Building2 size={14} /> Rekening Bank Toko
-            </p>
-            <button
-              type="button"
-              onClick={addAccountRow}
-              className="inline-flex items-center gap-1 rounded-full border border-gold/45 bg-cream px-3 py-1 text-xs font-bold text-teak hover:bg-espresso hover:text-gold-light"
-            >
-              <Plus size={13} /> Tambah Rekening
-            </button>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-espresso/65 p-3 backdrop-blur-sm sm:p-5"
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 12 }}
+        transition={{ duration: 0.2 }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pay-settings-title"
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-gold/35 bg-white shadow-2xl"
+      >
+        {/* Header Modal */}
+        <div className="flex items-start justify-between gap-4 border-b border-line bg-gradient-to-r from-cream via-white to-sand/55 px-5 py-4 sm:px-7 sm:py-5">
+          <div className="flex items-center gap-3.5">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-espresso text-gold-light shadow-soft">
+              <Landmark size={20} />
+            </span>
+            <div>
+              <h2
+                id="pay-settings-title"
+                className="font-heading text-lg font-bold text-espresso sm:text-xl"
+              >
+                Rekening Bank &amp; QRIS Toko
+              </h2>
+              <p className="mt-0.5 text-xs text-muted">
+                Tujuan pembayaran resmi yang tampil otomatis di halaman Pesanan Saya pelanggan.
+              </p>
+            </div>
           </div>
 
-          {accounts.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-line bg-cream/60 p-4 text-center text-xs text-muted">
-              Belum ada rekening. Klik <strong>+ Tambah Rekening</strong> agar otomatis tampil ke pelanggan saat membayar.
-            </p>
-          ) : (
-            <div className="space-y-2.5">
-              {accounts.map((acc, idx) => (
-                <div key={acc.id || idx} className="space-y-2 rounded-xl border border-line bg-cream/50 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-bold text-muted">Rekening #{idx + 1}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeAccountRow(idx)}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:underline"
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Tutup pengaturan"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-line bg-white text-muted transition hover:border-espresso hover:bg-espresso hover:text-gold-light"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Form Body */}
+        <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
+          <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+            {/* SEKSI 1: REKENING BANK */}
+            <section>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Building2 size={15} className="text-gold-dark" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-espresso">
+                    Daftar Rekening Transfer ({accounts.length})
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={addAccountRow}
+                  className="inline-flex min-h-[34px] items-center gap-1.5 rounded-full border border-gold/50 bg-cream px-3.5 text-xs font-bold text-teak transition hover:border-espresso hover:bg-espresso hover:text-gold-light"
+                >
+                  <Plus size={14} /> Tambah Rekening
+                </button>
+              </div>
+
+              {accounts.length === 0 ? (
+                <div className="rounded-2xl border-2 border-dashed border-line bg-cream/45 px-5 py-7 text-center">
+                  <Building2 size={24} className="mx-auto text-wood" />
+                  <p className="mt-2 text-sm font-semibold text-espresso">
+                    Belum ada rekening bank terdaftar
+                  </p>
+                  <p className="mx-auto mt-1 max-w-sm text-xs text-muted">
+                    Tambahkan nomor rekening BRI, BCA, Mandiri, atau Bank Jambi agar pelanggan bisa langsung menyalin rekening saat membayar.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {accounts.map((acc, idx) => (
+                    <div
+                      key={acc.id || idx}
+                      className="rounded-2xl border border-line bg-cream/40 p-4 transition hover:border-gold/50"
                     >
-                      <Trash2 size={12} /> Hapus
-                    </button>
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-line/70 pb-2.5">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="rounded-lg bg-espresso px-2 py-0.5 text-[11px] font-bold text-gold-light">
+                            #{idx + 1}
+                          </span>
+                          <p className="truncate text-xs font-semibold text-bark">
+                            {acc.bankName || acc.accountNumber ? (
+                              <>
+                                <span className="font-bold text-espresso">
+                                  {acc.bankName || 'Bank'}
+                                </span>
+                                {acc.accountNumber && (
+                                  <span className="font-mono text-teak"> · {acc.accountNumber}</span>
+                                )}
+                                {acc.accountHolder && (
+                                  <span className="text-muted"> · a.n. {acc.accountHolder}</span>
+                                )}
+                              </>
+                            ) : (
+                              'Isi detail rekening di bawah'
+                            )}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => removeAccountRow(idx)}
+                          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                        >
+                          <Trash2 size={13} /> Hapus
+                        </button>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-12">
+                        <div className="sm:col-span-5">
+                          <label className="mb-1 block text-xs font-semibold text-bark">
+                            Nama Bank
+                          </label>
+                          <input
+                            type="text"
+                            value={acc.bankName}
+                            onChange={(e) => updateAccountRow(idx, 'bankName', e.target.value)}
+                            placeholder="Contoh: BRI, BCA, Bank Jambi"
+                            className="field !py-2.5 text-sm"
+                            required
+                          />
+                        </div>
+
+                        <div className="sm:col-span-7">
+                          <label className="mb-1 block text-xs font-semibold text-bark">
+                            Nomor Rekening
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="off"
+                            value={acc.accountNumber}
+                            onChange={(e) =>
+                              updateAccountRow(idx, 'accountNumber', onlyDigits(e.target.value))
+                            }
+                            placeholder="Masukkan nomor rekening (angka saja)"
+                            className="field !py-2.5 font-mono text-sm font-semibold tracking-wide"
+                            required
+                          />
+                        </div>
+
+                        <div className="sm:col-span-12">
+                          <label className="mb-1 block text-xs font-semibold text-bark">
+                            Nama Pemilik Rekening (Atas Nama)
+                          </label>
+                          <input
+                            type="text"
+                            value={acc.accountHolder}
+                            onChange={(e) => updateAccountRow(idx, 'accountHolder', e.target.value)}
+                            placeholder="Contoh: Nanang Suryadi"
+                            className="field !py-2.5 text-sm"
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* SEKSI 2: KODE QRIS TOKO */}
+            <section>
+              <div className="mb-3 flex items-center gap-2">
+                <QrCode size={15} className="text-gold-dark" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-espresso">
+                  Kode QRIS Toko <span className="font-normal normal-case text-muted">(Opsional)</span>
+                </h3>
+              </div>
+
+              {qrisImage ? (
+                <div className="flex flex-col items-center gap-5 rounded-2xl border border-gold/35 bg-cream/45 p-4 sm:flex-row">
+                  <div className="grid h-36 w-36 shrink-0 place-items-center overflow-hidden rounded-2xl border border-line bg-white p-2 shadow-soft">
+                    <img
+                      src={qrisImage}
+                      alt="QRIS Toko"
+                      className="max-h-full max-w-full rounded-lg object-contain"
+                    />
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <input
-                      type="text"
-                      value={acc.bankName}
-                      onChange={(e) => updateAccountRow(idx, 'bankName', e.target.value)}
-                      placeholder="Nama Bank (BRI / BCA)"
-                      className="field !py-2 text-xs"
-                      required
-                    />
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={acc.accountNumber}
-                      onChange={(e) => updateAccountRow(idx, 'accountNumber', onlyDigits(e.target.value))}
-                      placeholder="No. Rekening (angka)"
-                      className="field !py-2 font-mono text-xs"
-                      required
-                    />
-                    <input
-                      type="text"
-                      value={acc.accountHolder}
-                      onChange={(e) => updateAccountRow(idx, 'accountHolder', e.target.value)}
-                      placeholder="Atas Nama"
-                      className="field !py-2 text-xs"
-                      required
-                    />
+                  <div className="flex-1 text-center sm:text-left">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
+                      <CheckCircle2 size={12} /> QRIS Aktif
+                    </span>
+                    <p className="mt-1.5 text-sm font-bold text-espresso">
+                      Siap dipindai pelanggan saat bayar
+                    </p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-muted">
+                      Gambar QRIS ini otomatis muncul di form pembayaran Tunai maupun setoran Sistem Tabung.
+                    </p>
+                    <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
+                      <label className="inline-flex min-h-[34px] cursor-pointer items-center gap-1.5 rounded-xl border border-line bg-white px-3 text-xs font-semibold text-bark transition hover:border-gold hover:text-espresso">
+                        <RefreshCw size={13} />
+                        <span>{uploadingQris ? 'Memproses...' : 'Ganti Gambar'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleQrisUpload}
+                          disabled={uploadingQris}
+                          className="sr-only"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setQrisImage('')}
+                        className="inline-flex min-h-[34px] items-center gap-1.5 rounded-xl border border-red-200 bg-white px-3 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                      >
+                        <Trash2 size={13} /> Hapus QRIS
+                      </button>
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              ) : (
+                <label className="flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-gold/45 bg-cream/40 px-5 py-6 text-center transition hover:border-teak hover:bg-sand/35">
+                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-teak shadow-soft">
+                    <Upload size={18} />
+                  </span>
+                  <span className="text-sm font-bold text-espresso">
+                    {uploadingQris ? 'Memproses gambar QRIS...' : 'Upload Foto Kode QRIS Toko'}
+                  </span>
+                  <span className="text-xs text-muted">
+                    Format JPG atau PNG · Otomatis dikompresi agar ringan dibuka di HP pelanggan
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleQrisUpload}
+                    disabled={uploadingQris}
+                    className="sr-only"
+                  />
+                </label>
+              )}
+            </section>
 
-        <div>
-          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-teak">
-            <QrCode size={14} /> Gambar QRIS Toko (Opsional)
-          </p>
-          {qrisImage ? (
-            <div className="relative inline-block rounded-xl border border-gold/40 bg-cream p-2">
-              <img src={qrisImage} alt="QRIS Toko" className="max-h-40 rounded-lg object-contain" />
+            {/* SEKSI 3: PANDUAN PEMBAYARAN (FULL-WIDTH, LEGA) */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <FileText size={15} className="text-gold-dark" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-espresso">
+                  Catatan Panduan untuk Pelanggan
+                </h3>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-bark">
+                  Keterangan Pembayaran Tunai
+                </label>
+                <textarea
+                  rows={3}
+                  value={cashNote}
+                  onChange={(e) => setCashNote(e.target.value)}
+                  placeholder="Contoh: Pembayaran tunai dapat dibayarkan langsung di showroom Meuble Le'Koyo atau transfer penuh sesuai tagihan."
+                  className="field !py-2.5 text-sm leading-relaxed"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-bark">
+                  Keterangan Sistem Tabung
+                </label>
+                <textarea
+                  rows={3}
+                  value={tabungNote}
+                  onChange={(e) => setTabungNote(e.target.value)}
+                  placeholder="Contoh: Sistem Tabung fleksibel: Anda dapat menyetor bertahap sesuai kemampuan hingga LUNAS."
+                  className="field !py-2.5 text-sm leading-relaxed"
+                />
+              </div>
+            </section>
+          </div>
+
+          {/* Footer Modal */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-cream/70 px-5 py-4 sm:px-7">
+            <p className="text-xs text-muted">
+              Perubahan langsung aktif di halaman <strong>Pesanan Saya</strong>.
+            </p>
+            <div className="flex items-center gap-2.5">
               <button
                 type="button"
-                onClick={() => setQrisImage('')}
-                className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-espresso text-white hover:bg-red-600"
-                aria-label="Hapus QRIS"
+                onClick={onClose}
+                disabled={saving}
+                className="btn-soft !min-h-[42px] !px-4 text-xs sm:text-sm"
               >
-                <X size={12} />
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={saving || uploadingQris}
+                className="btn-primary !min-h-[42px] !px-5 text-xs sm:text-sm disabled:opacity-55"
+              >
+                <Save size={15} className="text-gold-light" />
+                {saving ? 'Menyimpan...' : 'Simpan Pengaturan'}
               </button>
             </div>
-          ) : (
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-gold/50 bg-cream/60 px-4 py-3.5 text-xs font-semibold text-teak hover:bg-sand/40">
-              <Upload size={15} />
-              <span>{uploadingQris ? 'Memproses...' : 'Upload Foto QRIS'}</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleQrisUpload}
-                disabled={uploadingQris}
-                className="sr-only"
-              />
-            </label>
-          )}
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-bark">Catatan Pembayaran Tunai</label>
-            <textarea
-              rows={2}
-              value={cashNote}
-              onChange={(e) => setCashNote(e.target.value)}
-              className="field !py-2 text-xs"
-            />
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-bark">Catatan Sistem Tabung</label>
-            <textarea
-              rows={2}
-              value={tabungNote}
-              onChange={(e) => setTabungNote(e.target.value)}
-              className="field !py-2 text-xs"
-            />
-          </div>
-        </div>
-
-        <button type="submit" disabled={saving} className="btn-primary w-full text-sm">
-          {saving ? 'Menyimpan...' : 'Simpan Pengaturan'}
-        </button>
-      </form>
-    </Modal>
+        </form>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -478,7 +673,6 @@ function OwnerPricingForm({ order, onSave, onProposeAdjustment, onCancelAdjustme
   const [noteInput, setNoteInput] = useState(order.ownerNote || '');
   const [saving, setSaving] = useState(false);
 
-  // State form Adendum Penyesuaian Harga
   const [showAdjForm, setShowAdjForm] = useState(false);
   const [adjPrice, setAdjPrice] = useState('');
   const [adjReason, setAdjReason] = useState('');
@@ -664,7 +858,6 @@ function OwnerPricingForm({ order, onSave, onProposeAdjustment, onCancelAdjustme
         )}
       </form>
 
-      {/* Form Pengajuan Penyesuaian Harga (Adendum Dua Arah) */}
       {showAdjForm && canProposeAdj && (
         <form onSubmit={handleProposeAdjustment} className="rounded-xl border border-amber-300 bg-amber-50/60 p-4">
           <p className="mb-2.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-900">
@@ -726,7 +919,6 @@ function OwnerPricingForm({ order, onSave, onProposeAdjustment, onCancelAdjustme
         </form>
       )}
 
-      {/* Status Pengajuan Penyesuaian Harga Pending / Rejected */}
       {adj?.status === 'pending' && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs">
           <div>
@@ -773,7 +965,6 @@ function OwnerPricingForm({ order, onSave, onProposeAdjustment, onCancelAdjustme
         </div>
       )}
 
-      {/* Riwayat Penyesuaian Harga yang Disetujui */}
       {priceHistory.length > 0 && (
         <div className="rounded-xl border border-line bg-white p-3 text-xs">
           <p className="flex items-center gap-1 font-bold uppercase tracking-wider text-muted">
@@ -1431,7 +1622,6 @@ function OrderCard({
   const hasFinal = order.finalPrice != null && Number(order.finalPrice) > 0;
   const isLocked = isOrderPriceLocked(order);
 
-  // Blokir status mundur ke "Menunggu Harga Owner" jika harga sudah ditetapkan atau ada pembayaran
   const allowedStatuses = hasFinal || isLocked ? FORWARD_STATUSES : ALL_STATUSES;
 
   const [activeTab, setActiveTab] = useState(focusedTab || (pendingPayCount > 0 ? 'payment' : null));
@@ -1801,7 +1991,6 @@ export default function Orders() {
     [orders],
   );
 
-  // Tangkap klik notifikasi dari lonceng di header atas (?orderId=...&tab=...)
   useEffect(() => {
     const qOrderId = searchParams.get('orderId');
     const qTab = searchParams.get('tab') || 'payment';
@@ -1810,7 +1999,6 @@ export default function Orders() {
     setSearchParams({}, { replace: true });
   }, [searchParams, orders.length, jumpToOrder, setSearchParams]);
 
-  // Strip notifikasi khusus bukti pembayaran / cicilan yang menunggu diverifikasi
   const pendingPaymentAlerts = useMemo(() => {
     const items = [];
     orders.forEach((order) => {
@@ -1861,6 +2049,7 @@ export default function Orders() {
 
   const countForTab = (key) => orders.filter((o) => statusToFilterTab(o) === key).length;
   const bankCount = paymentSettings?.accounts?.length || 0;
+  const hasQris = Boolean(paymentSettings?.qrisImage);
 
   return (
     <div>
@@ -1871,10 +2060,18 @@ export default function Orders() {
           <button
             type="button"
             onClick={() => setShowSettingsModal(true)}
-            className="btn-soft !min-h-[42px] text-xs sm:text-sm"
+            className="group inline-flex min-h-[46px] items-center gap-3 rounded-2xl border border-gold/40 bg-white px-3.5 py-2 text-left shadow-soft transition hover:border-gold hover:bg-cream"
           >
-            <Settings2 size={15} className="text-gold-dark" />
-            Rekening &amp; QRIS ({bankCount})
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-espresso text-gold-light transition group-hover:scale-105">
+              <Landmark size={15} />
+            </span>
+            <span className="leading-tight">
+              <span className="block text-xs font-bold text-espresso">Rekening &amp; QRIS</span>
+              <span className="block text-[11px] text-muted">
+                {bankCount > 0 ? `${bankCount} rekening` : 'Belum diatur'}
+                {hasQris ? ' · QRIS aktif' : ''}
+              </span>
+            </span>
           </button>
         }
       />
