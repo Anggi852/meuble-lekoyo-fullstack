@@ -24,6 +24,7 @@ import {
   Wallet,
   Wrench,
   X,
+  ShoppingBag,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import OrderModal from '../components/OrderModal';
@@ -406,7 +407,7 @@ export default function ProductDetail() {
                   onClick={() => setQuickOrderCustom(customItem)}
                   className="btn-primary btn-shimmer flex-1"
                 >
-                  <MessageCircle size={18} className="text-gold-light" /> Pesan Langsung Model Ini
+                  <ShoppingBag size={18} className="text-gold-light" /> Pesan Langsung Model Ini
                 </button>
                 <button
                   type="button"
