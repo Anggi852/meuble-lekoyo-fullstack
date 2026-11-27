@@ -41,7 +41,12 @@ export default function AdminLayout() {
       Array.isArray(o?.paymentRecords) &&
       o.paymentRecords.some((r) => r.status === 'Terverifikasi' || r.status === 'Menunggu Verifikasi');
     if (hasFinal || hasPayments || o?.priceAgreedAt) return false;
-    return s === 'Menunggu Harga Owner' || s === 'Menunggu Konfirmasi WA' || s === 'Baru';
+    return (
+      s === 'Menunggu Harga Owner' ||
+      s === 'Menunggu Konfirmasi WA' ||
+      s === 'Baru' ||
+      s === 'Harga Ditetapkan'
+    );
   }).length;
 
   const items = [

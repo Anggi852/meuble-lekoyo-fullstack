@@ -51,8 +51,12 @@ const isOrderPriceLocked = (order) => Boolean(order?.priceAgreedAt) || hasActive
 const normalizeStatus = (order) => {
   const s = order?.status;
   const hasFinal = order?.finalPrice != null && Number(order.finalPrice) > 0;
+  const locked = isOrderPriceLocked(order);
+  if (s === 'Harga Ditetapkan' && !hasFinal && !locked) {
+    return 'Menunggu Harga Owner';
+  }
   if (s === 'Baru' || s === 'Menunggu Konfirmasi WA' || s === 'Menunggu Harga Owner') {
-    return hasFinal || isOrderPriceLocked(order) ? 'Harga Ditetapkan' : 'Menunggu Harga Owner';
+    return hasFinal || locked ? 'Harga Ditetapkan' : 'Menunggu Harga Owner';
   }
   return s || 'Menunggu Harga Owner';
 };

@@ -8,14 +8,16 @@ import { getPaymentSummary } from '../../utils/payment';
 function resolveStatus(order) {
   const s = order?.status;
   const hasFinal = order?.finalPrice != null && Number(order.finalPrice) > 0;
-  const hasPayments =
-    Array.isArray(order?.paymentRecords) &&
-    order.paymentRecords.some((r) => r.status === 'Terverifikasi' || r.status === 'Menunggu Verifikasi');
+  const locked =
+    Boolean(order?.priceAgreedAt) ||
+    (Array.isArray(order?.paymentRecords) &&
+      order.paymentRecords.some((r) => r.status === 'Terverifikasi' || r.status === 'Menunggu Verifikasi'));
 
+  if (s === 'Harga Ditetapkan' && !hasFinal && !locked) {
+    return 'Menunggu Harga Owner';
+  }
   if (s === 'Baru' || s === 'Menunggu Konfirmasi WA' || s === 'Menunggu Harga Owner') {
-    return hasFinal || hasPayments || order?.priceAgreedAt
-      ? 'Harga Ditetapkan'
-      : 'Menunggu Harga Owner';
+    return hasFinal || locked ? 'Harga Ditetapkan' : 'Menunggu Harga Owner';
   }
   return s || 'Menunggu Harga Owner';
 }

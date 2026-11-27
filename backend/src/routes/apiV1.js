@@ -472,10 +472,36 @@ router.patch(
     if (!existing) return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
 
     const patch = { ...req.body };
+    const nextFinalPrice =
+      patch.finalPrice !== undefined ? patch.finalPrice : existing.finalPrice;
+    const willHaveFinal = nextFinalPrice != null && Number(nextFinalPrice) > 0;
     const hasFinal = existing.finalPrice != null && Number(existing.finalPrice) > 0;
     const locked = isOrderPriceLocked(existing);
 
+    // Blokir maju ke Harga Ditetapkan / Diproses / Selesai sebelum Harga Final disimpan
+    if (
+      patch.status &&
+      ['Harga Ditetapkan', 'Diproses', 'Selesai'].includes(patch.status) &&
+      !willHaveFinal
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Isi dan simpan Harga Final terlebih dahulu sebelum mengubah status ke Harga Ditetapkan, Diproses, atau Selesai.',
+      });
+    }
+
     // Blokir mundur ke status Menunggu Harga Owner jika harga sudah ditetapkan atau ada pembayaran
+    if (
+      patch.status &&
+      ['Menunggu Harga Owner', 'Baru', 'Menunggu Konfirmasi WA'].includes(patch.status) &&
+      (hasFinal || locked)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status tidak dapat dikembalikan ke Menunggu Harga Owner karena harga sudah ditetapkan.',
+      });
+    }
     if (
       patch.status &&
       ['Menunggu Harga Owner', 'Baru', 'Menunggu Konfirmasi WA'].includes(patch.status) &&

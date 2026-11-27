@@ -85,8 +85,12 @@ const isOrderPriceLocked = (order) => Boolean(order?.priceAgreedAt) || hasActive
 const normalizeOrderStatus = (order) => {
   const s = order?.status;
   const hasFinal = order?.finalPrice != null && Number(order.finalPrice) > 0;
+  const locked = isOrderPriceLocked(order);
+  if (s === 'Harga Ditetapkan' && !hasFinal && !locked) {
+    return 'Menunggu Harga Owner';
+  }
   if (s === 'Baru' || s === 'Menunggu Konfirmasi WA' || s === 'Menunggu Harga Owner') {
-    return hasFinal || isOrderPriceLocked(order) ? 'Harga Ditetapkan' : 'Menunggu Harga Owner';
+    return hasFinal || locked ? 'Harga Ditetapkan' : 'Menunggu Harga Owner';
   }
   return s || 'Menunggu Harga Owner';
 };
@@ -1593,8 +1597,13 @@ function OrderCard({
               value={displayStatus}
               onChange={async (e) => {
                 const nextStatus = e.target.value;
-                if ((nextStatus === 'Diproses' || nextStatus === 'Selesai') && !hasFinal) {
-                  toast.error('Tetapkan Harga Final dulu di tab Detail & Harga.');
+                if (
+                  (nextStatus === 'Harga Ditetapkan' ||
+                    nextStatus === 'Diproses' ||
+                    nextStatus === 'Selesai') &&
+                  !hasFinal
+                ) {
+                  toast.error('Isi dan simpan Harga Final dulu di tab Detail & Harga.');
                   setActiveTab('detail');
                   return;
                 }
@@ -1613,9 +1622,16 @@ function OrderCard({
               }}
               className="field !min-h-[36px] !w-auto !py-1.5 text-xs font-semibold"
             >
-              {allowedStatuses.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
+              {allowedStatuses.map((s) => {
+                const needPrice =
+                  !hasFinal &&
+                  (s === 'Harga Ditetapkan' || s === 'Diproses' || s === 'Selesai');
+                return (
+                  <option key={s} value={s} disabled={needPrice}>
+                    {needPrice ? `${s} (simpan harga dulu)` : s}
+                  </option>
+                );
+              })}
             </select>
 
             {customerWaLink && (
