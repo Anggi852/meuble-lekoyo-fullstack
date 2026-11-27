@@ -450,17 +450,27 @@ router.patch(
   requireAdmin,
   validate(orderUpdateSchema),
   asyncHandler(async (req, res) => {
+    const existing = await db.getOrderById(req.params.id);
+    if (!existing) return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
+
     const patch = { ...req.body };
-    if (patch.finalPrice !== undefined && patch.finalPrice !== null && !patch.status) {
+    // Jika Owner menetapkan/mengubah harga final pada pesanan yang belum diproses/selesai,
+    // otomatis pindahkan status ke 'Harga Ditetapkan' (termasuk jika sebelumnya dibatalkan)
+    if (
+      patch.finalPrice !== undefined &&
+      patch.finalPrice !== null &&
+      !patch.status &&
+      existing.status !== 'Diproses' &&
+      existing.status !== 'Selesai'
+    ) {
       patch.status = 'Harga Ditetapkan';
     }
     const updated = await db.updateOrder(req.params.id, patch);
-    if (!updated) return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
     return res.json({ success: true, message: 'Pesanan diperbarui.', data: updated });
   }),
 );
 
-// Tambah setoran tabungan / pembayaran tunai (Pelanggan upload bukti -> Menunggu Verifikasi; Owner catat -> Terverifikasi)
+// Tambah setoran tabungan / pembayaran tunai (tidak boleh melebihi sisa tagihan)
 router.post(
   '/orders/:id/payments',
   requireAuth,
@@ -485,18 +495,40 @@ router.post(
           message: 'Pesanan yang dibatalkan tidak dapat menerima pembayaran.',
         });
       }
-      if (order.finalPrice == null || Number(order.finalPrice) <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Menunggu Pak Nanang menetapkan Harga Final terlebih dahulu sebelum melakukan pembayaran.',
-        });
-      }
       if (req.body.method !== 'Tunai di Toko' && !req.body.proofImage) {
         return res.status(400).json({
           success: false,
           message: 'Mohon unggah foto bukti transfer / pembayaran QRIS.',
         });
       }
+    }
+
+    const bill = Number(order.finalPrice) || 0;
+    if (bill <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Menunggu Pak Nanang menetapkan Harga Final terlebih dahulu sebelum melakukan pembayaran.',
+      });
+    }
+
+    const existingRecords = Array.isArray(order.paymentRecords) ? order.paymentRecords : [];
+    const verifiedPaid = existingRecords
+      .filter((r) => r.status === 'Terverifikasi')
+      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    const remaining = Math.max(0, bill - verifiedPaid);
+
+    if (remaining <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Pesanan ini sudah LUNAS dan tidak memiliki sisa tagihan.',
+      });
+    }
+
+    if (Number(req.body.amount) > remaining) {
+      return res.status(400).json({
+        success: false,
+        message: `Nominal pembayaran tidak boleh melebihi sisa tagihan (maksimal Rp ${remaining.toLocaleString('id-ID')}).`,
+      });
     }
 
     const nowIso = new Date().toISOString();
@@ -516,7 +548,7 @@ router.post(
       createdAt: nowIso,
     };
 
-    const nextRecords = [...(Array.isArray(order.paymentRecords) ? order.paymentRecords : []), record];
+    const nextRecords = [...existingRecords, record];
     const updated = await db.updateOrder(order.id, { paymentRecords: nextRecords });
 
     if (!isOwner && req.user?.email) {
@@ -561,6 +593,20 @@ router.patch(
     const idx = records.findIndex((r) => Number(r.id) === targetId);
     if (idx === -1) {
       return res.status(404).json({ success: false, message: 'Catatan pembayaran tidak ditemukan.' });
+    }
+
+    if (req.body.status === 'Terverifikasi') {
+      const bill = Number(order.finalPrice) || 0;
+      const otherVerified = records
+        .filter((r, i) => i !== idx && r.status === 'Terverifikasi')
+        .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+      const remaining = Math.max(0, bill - otherVerified);
+      if (bill > 0 && Number(records[idx].amount) > remaining) {
+        return res.status(400).json({
+          success: false,
+          message: `Tidak dapat diverifikasi: nominal (Rp ${Number(records[idx].amount).toLocaleString('id-ID')}) melebihi sisa tagihan (Rp ${remaining.toLocaleString('id-ID')}).`,
+        });
+      }
     }
 
     const nowIso = new Date().toISOString();
@@ -999,4 +1045,4 @@ router.post(
   }),
 );
 
-export default router;
+export default router;  

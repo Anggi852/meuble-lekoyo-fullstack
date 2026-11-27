@@ -79,7 +79,6 @@ export default function MyOrders() {
 
   const [receiptOrder, setReceiptOrder] = useState(null);
 
-  // Auto-muat saat buka halaman & sinkron otomatis tiap 15 detik agar perubahan dari Owner langsung tampil
   useEffect(() => {
     if (!user || isOwner) return undefined;
     loadMyOrders();
@@ -153,12 +152,22 @@ export default function MyOrders() {
     setTimeout(() => setCopiedAcc(''), 2000);
   };
 
+  const payOrderSummary = payOrder ? getPaymentSummary(payOrder) : null;
+  const numericPayAmount = Number(String(payAmount).replace(/[^\d]/g, '')) || 0;
+  const isOverRemaining =
+    Boolean(payOrderSummary) && numericPayAmount > payOrderSummary.remaining;
+
   const handleSubmitPayment = async (e) => {
     e.preventDefault();
-    if (!payOrder) return;
-    const numericAmount = Number(String(payAmount).replace(/[^\d]/g, ''));
-    if (!numericAmount || numericAmount < 1000) {
+    if (!payOrder || !payOrderSummary) return;
+    if (!numericPayAmount || numericPayAmount < 1000) {
       toast.error('Masukkan nominal pembayaran minimal Rp 1.000.');
+      return;
+    }
+    if (numericPayAmount > payOrderSummary.remaining) {
+      toast.error(
+        `Nominal tidak boleh melebihi sisa tagihan (${formatRupiah(payOrderSummary.remaining)}).`,
+      );
       return;
     }
     if (payMethod !== 'Tunai di Toko' && !payProof) {
@@ -168,7 +177,7 @@ export default function MyOrders() {
     setSubmittingPay(true);
     try {
       await submitOrderPayment(payOrder.id, {
-        amount: numericAmount,
+        amount: numericPayAmount,
         date: payDate,
         method: payMethod,
         accountLabel: payMethod === 'Transfer Bank' ? payAccountLabel : '',
@@ -289,8 +298,6 @@ export default function MyOrders() {
     );
   }
 
-  const payOrderSummary = payOrder ? getPaymentSummary(payOrder) : null;
-
   return (
     <section className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
       <div className="mb-7 flex flex-wrap items-center justify-between gap-4">
@@ -352,7 +359,6 @@ export default function MyOrders() {
                 key={order.id}
                 className="overflow-hidden rounded-2xl border border-line bg-white shadow-soft"
               >
-                {/* Header Kartu */}
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line/80 bg-cream/55 p-5">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -400,7 +406,6 @@ export default function MyOrders() {
                 </div>
 
                 <div className="space-y-4 p-5">
-                  {/* BUKU TABUNGAN / STATUS PEMBAYARAN */}
                   {hasFinalPrice && !isCancelled && (
                     <div className="rounded-2xl border border-gold/30 bg-cream/55 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -431,8 +436,7 @@ export default function MyOrders() {
                         </div>
                       </div>
 
-                      {/* 3 Angka Utama */}
-                      <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-white p-3 border border-line/70">
+                      <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl border border-line/70 bg-white p-3">
                         <div>
                           <p className="text-[11px] text-muted">Harga Barang</p>
                           <p className="text-sm font-bold text-espresso sm:text-base">
@@ -453,7 +457,6 @@ export default function MyOrders() {
                         </div>
                       </div>
 
-                      {/* Progress Bar */}
                       <div className="mt-3">
                         <div className="mb-1 flex justify-between text-xs font-semibold">
                           <span className="text-muted">Progres Pelunasan</span>
@@ -477,7 +480,6 @@ export default function MyOrders() {
                         )}
                       </div>
 
-                      {/* Tabel Riwayat Setoran & Sisa Berjalan */}
                       {paySummary.ledger.length > 0 && (
                         <div className="mt-3.5 overflow-hidden rounded-xl border border-line bg-white">
                           <div className="hidden grid-cols-12 bg-sand/60 px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-muted sm:grid">
@@ -558,7 +560,6 @@ export default function MyOrders() {
                     </div>
                   )}
 
-                  {/* Alamat & Catatan Owner */}
                   <div className="grid gap-3 text-sm sm:grid-cols-2">
                     <div>
                       <p className="text-[11px] font-bold uppercase tracking-wider text-muted">
@@ -587,7 +588,6 @@ export default function MyOrders() {
                     )}
                   </div>
 
-                  {/* Foto Produk Hasil Jadi */}
                   {Array.isArray(order.finishedPhotos) && order.finishedPhotos.length > 0 && (
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3.5">
                       <p className="mb-2 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-800">
@@ -755,11 +755,14 @@ export default function MyOrders() {
                     <input
                       type="number"
                       min="1000"
+                      max={payOrderSummary.remaining}
                       step="1000"
                       value={payAmount}
                       onChange={(e) => setPayAmount(e.target.value)}
-                      placeholder="Mis. 500000"
-                      className="field !py-2 text-sm font-bold"
+                      placeholder={`Maks. ${payOrderSummary.remaining}`}
+                      className={`field !py-2 text-sm font-bold ${
+                        isOverRemaining ? '!border-red-500 !bg-red-50/40 !text-red-700' : ''
+                      }`}
                       required
                     />
                   </div>
@@ -775,18 +778,26 @@ export default function MyOrders() {
                   </div>
                 </div>
 
-                {/* Simulasi langsung sisa tagihan setelah setor */}
-                {Number(payAmount) > 0 && (
+                {/* Peringatan keras jika nominal melewati sisa tagihan */}
+                {isOverRemaining ? (
+                  <p className="flex items-start gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                    <span>
+                      Nominal melebihi sisa tagihan! Maksimal yang dapat dibayar adalah{' '}
+                      <strong>{formatRupiah(payOrderSummary.remaining)}</strong>.
+                    </span>
+                  </p>
+                ) : numericPayAmount > 0 ? (
                   <p className="rounded-lg bg-sand/70 px-3 py-2 text-xs text-bark">
-                    Jika setoran <strong>{formatRupiah(Number(payAmount))}</strong> ini diverifikasi, sisa tagihan Anda tinggal{' '}
+                    Jika setoran <strong>{formatRupiah(numericPayAmount)}</strong> ini diverifikasi, sisa tagihan Anda tinggal{' '}
                     <strong className="text-teak">
-                      {Math.max(0, payOrderSummary.remaining - Number(payAmount)) === 0
+                      {payOrderSummary.remaining - numericPayAmount === 0
                         ? 'Rp 0 (LUNAS)'
-                        : formatRupiah(Math.max(0, payOrderSummary.remaining - Number(payAmount)))}
+                        : formatRupiah(payOrderSummary.remaining - numericPayAmount)}
                     </strong>
                     .
                   </p>
-                )}
+                ) : null}
 
                 {payOrderSummary.remaining > 0 && (
                   <div className="flex flex-wrap gap-1.5">
@@ -903,8 +914,8 @@ export default function MyOrders() {
 
                 <button
                   type="submit"
-                  disabled={submittingPay || uploadingProof}
-                  className="btn-primary w-full disabled:opacity-55"
+                  disabled={submittingPay || uploadingProof || isOverRemaining || numericPayAmount < 1000}
+                  className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {submittingPay ? 'Mengirim...' : 'Kirim Bukti Pembayaran'}
                 </button>

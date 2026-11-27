@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import {
   ShoppingBag,
@@ -29,6 +29,8 @@ import {
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
+  Search,
+  AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useApp } from '../../context/AppContext';
@@ -53,8 +55,20 @@ const statuses = [
   'Dibatalkan',
 ];
 
+const TAB_ITEMS = [
+  { key: 'Belum Direspon', label: 'Belum Direspon' },
+  { key: 'Harga Ditetapkan', label: 'Harga Ditetapkan' },
+  { key: 'Diproses', label: 'Diproses' },
+  { key: 'Selesai', label: 'Selesai' },
+  { key: 'Dibatalkan', label: 'Dibatalkan' },
+];
+
 const CATEGORY_OPTIONS = CUSTOM_CATEGORIES.filter((c) => c !== 'Semua');
 const normalizeStatus = (s) => (s === 'Baru' ? 'Menunggu Harga Owner' : s);
+const isUnrespondedStatus = (s) => {
+  const n = normalizeStatus(s);
+  return n === 'Menunggu Harga Owner' || n === 'Menunggu Konfirmasi WA';
+};
 
 const statusStyle = {
   'Menunggu Harga Owner': 'bg-amber-50 text-amber-800 border-amber-200',
@@ -65,11 +79,64 @@ const statusStyle = {
   Dibatalkan: 'bg-red-50 text-red-700 border-red-200',
 };
 
+const KEYWORD_CATEGORY_MAP = [
+  ['kitchen', 'Kitchen Set'],
+  ['dapur', 'Kitchen Set'],
+  ['minibar', 'Kitchen Set'],
+  ['lemari', 'Lemari'],
+  ['almari', 'Lemari'],
+  ['wardrobe', 'Lemari'],
+  ['meja', 'Meja'],
+  ['kursi', 'Kursi & Sofa'],
+  ['sofa', 'Kursi & Sofa'],
+  ['bangku', 'Kursi & Sofa'],
+  ['dipan', 'Kamar Set & Dipan'],
+  ['ranjang', 'Kamar Set & Dipan'],
+  ['tempat tidur', 'Kamar Set & Dipan'],
+  ['kamar set', 'Kamar Set & Dipan'],
+  ['pintu', 'Pintu, Kusen & Partisi'],
+  ['kusen', 'Pintu, Kusen & Partisi'],
+  ['partisi', 'Pintu, Kusen & Partisi'],
+  ['penyekat', 'Pintu, Kusen & Partisi'],
+  ['buffet', 'Buffet & Backdrop TV'],
+  ['bufet', 'Buffet & Backdrop TV'],
+  ['backdrop', 'Buffet & Backdrop TV'],
+  ['rak', 'Rak, Credenza & Nakas'],
+  ['credenza', 'Rak, Credenza & Nakas'],
+  ['nakas', 'Rak, Credenza & Nakas'],
+  ['mimbar', 'Mimbar & Podium'],
+  ['podium', 'Mimbar & Podium'],
+  ['gazebo', 'Gazebo & Outdoor'],
+  ['pendopo', 'Gazebo & Outdoor'],
+  ['cermin', 'Cermin & Rias'],
+  ['rias', 'Cermin & Rias'],
+];
+
 function guessCategoryForOrder(order) {
-  const fromType = order?.custom?.design?.type && TYPES[order.custom.design.type]?.label;
-  if (fromType && CATEGORY_OPTIONS.includes(fromType)) return fromType;
+  const designType = order?.custom?.design?.type;
+  if (designType && designType !== 'lainnya') {
+    const fromType = TYPES[designType]?.label;
+    if (fromType && CATEGORY_OPTIONS.includes(fromType)) return fromType;
+  }
   const fromLabel = order?.custom?.categoryLabel;
-  if (fromLabel && CATEGORY_OPTIONS.includes(fromLabel)) return fromLabel;
+  if (fromLabel && fromLabel !== 'Bebas Request' && CATEGORY_OPTIONS.includes(fromLabel)) {
+    return fromLabel;
+  }
+  const haystack = [
+    order?.custom?.title,
+    order?.product,
+    order?.custom?.options,
+    order?.custom?.note,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  for (const [kw, cat] of KEYWORD_CATEGORY_MAP) {
+    if (haystack.includes(kw) && CATEGORY_OPTIONS.includes(cat)) {
+      return cat;
+    }
+  }
   return 'Bebas Request';
 }
 
@@ -386,7 +453,9 @@ function OwnerPricingForm({ order, onSave }) {
         finalPrice: numericPrice,
         ownerNote: noteInput.trim(),
       });
-      toast.success(`Harga final ${order.orderCode || `#${order.id}`} disimpan.`);
+      toast.success(
+        `Harga final ${order.orderCode || `#${order.id}`} disimpan & dipindahkan ke Harga Ditetapkan.`,
+      );
     } finally {
       setSaving(false);
     }
@@ -465,17 +534,25 @@ function PaymentTabPanel({
     );
   }
 
+  const numericAmount = Number(String(amount).replace(/[^\d]/g, '')) || 0;
+  const isOverRemaining = numericAmount > summary.remaining;
+
   const handleManualAdd = async (e) => {
     e.preventDefault();
-    const numeric = Number(String(amount).replace(/[^\d]/g, ''));
-    if (!numeric || numeric < 1000) {
+    if (!numericAmount || numericAmount < 1000) {
       toast.error('Masukkan nominal minimal Rp 1.000.');
+      return;
+    }
+    if (numericAmount > summary.remaining) {
+      toast.error(
+        `Nominal tidak boleh melebihi sisa tagihan (${formatRupiah(summary.remaining)}).`,
+      );
       return;
     }
     setSaving(true);
     try {
       await onRecordPayment(order.id, {
-        amount: numeric,
+        amount: numericAmount,
         date,
         method,
         note:
@@ -495,7 +572,6 @@ function PaymentTabPanel({
 
   return (
     <div className="space-y-4">
-      {/* Ringkasan 3 Angka Utama + Progress */}
       <div className="rounded-xl border border-line bg-cream/60 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="grid flex-1 grid-cols-3 gap-3">
@@ -550,22 +626,24 @@ function PaymentTabPanel({
         </div>
       </div>
 
-      {/* Form Catat Setoran / Pembayaran Langsung oleh Owner */}
       {showAdd && (
         <form onSubmit={handleManualAdd} className="rounded-xl border border-gold/40 bg-white p-3.5">
           <p className="mb-2.5 text-xs font-bold text-espresso">
-            Catat Pembayaran Baru (langsung terverifikasi)
+            Catat Pembayaran Baru (maks. {formatRupiah(summary.remaining)})
           </p>
           <div className="grid gap-2.5 sm:grid-cols-12">
             <div className="sm:col-span-3">
               <input
                 type="number"
                 min="1000"
+                max={summary.remaining}
                 step="1000"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder="Nominal (mis. 500000)"
-                className="field !py-2 text-xs font-bold"
+                placeholder={`Maks. ${summary.remaining}`}
+                className={`field !py-2 text-xs font-bold ${
+                  isOverRemaining ? '!border-red-500 !bg-red-50/40 !text-red-700' : ''
+                }`}
                 required
               />
             </div>
@@ -587,15 +665,23 @@ function PaymentTabPanel({
                 placeholder="Catatan (opsional)"
                 className="field flex-1 !py-2 text-xs"
               />
-              <button type="submit" disabled={saving} className="btn-primary !min-h-[36px] !px-3.5 text-xs">
+              <button
+                type="submit"
+                disabled={saving || isOverRemaining || numericAmount < 1000}
+                className="btn-primary !min-h-[36px] !px-3.5 text-xs disabled:opacity-50"
+              >
                 {saving ? '...' : 'Simpan'}
               </button>
             </div>
           </div>
+          {isOverRemaining && (
+            <p className="mt-2 text-xs font-semibold text-red-600">
+              Nominal melebihi sisa tagihan ({formatRupiah(summary.remaining)}).
+            </p>
+          )}
         </form>
       )}
 
-      {/* Buku Tabungan / Riwayat Setoran dengan Sisa Berjalan */}
       {summary.ledger.length === 0 ? (
         <p className="py-3 text-center text-xs text-muted">Belum ada setoran atau pembayaran tercatat.</p>
       ) : (
@@ -791,6 +877,8 @@ function FinishedTabPanel({
   }, [order.finishedPhotos]);
 
   const isPublished = Boolean(linkedPortfolio && linkedPortfolio.isPublished !== false);
+  const needsCategoryCheck =
+    category === 'Bebas Request' || /tangga\s*&\s*railing/i.test(String(title || ''));
 
   const handleSavePhotosOnly = async () => {
     if (photos.length === 0) {
@@ -811,11 +899,15 @@ function FinishedTabPanel({
       toast.error('Upload minimal 1 foto produk jadi sebelum publikasi.');
       return;
     }
+    if (title.trim().length < 2) {
+      toast.error('Isi nama karya yang jelas sesuai produk jadinya.');
+      return;
+    }
     setPublishing(true);
     try {
       const typeKey =
-        order.custom?.design?.type ||
         CUSTOM_TYPE_KEYS.find((k) => TYPES[k].label === category) ||
+        order.custom?.design?.type ||
         'lainnya';
       const preset = order.custom?.design
         ? {
@@ -826,7 +918,7 @@ function FinishedTabPanel({
         : undefined;
 
       await onPublishOrder(order, {
-        name: title.trim() || order.custom?.title || order.product,
+        name: title.trim(),
         typeKey,
         category,
         size: order.custom?.size || 'Sesuai pesanan',
@@ -844,7 +936,7 @@ function FinishedTabPanel({
         price: order.finalPrice ?? order.total ?? null,
         isPublished: true,
       });
-      toast.success('Disetujui & tayang di Karya Pernah Dicustom.');
+      toast.success(`Disetujui & tayang di Karya Pernah Dicustom (${category}).`);
     } finally {
       setPublishing(false);
     }
@@ -919,37 +1011,70 @@ function FinishedTabPanel({
           <p className="text-xs font-bold uppercase tracking-wider text-teak">
             Publikasi ke Karya Pernah Dicustom
           </p>
-          <div className="grid gap-2.5 sm:grid-cols-3">
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Nama karya"
-              className="field !py-2 text-xs sm:col-span-2"
-            />
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="field !py-2 text-xs"
-            >
-              {CATEGORY_OPTIONS.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              placeholder="Kota pemesan"
-              className="field !py-2 text-xs"
-            />
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Deskripsi singkat"
-              className="field !py-2 text-xs sm:col-span-2"
-            />
+
+          {needsCategoryCheck && (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              <span>
+                Periksa <strong>Nama Karya</strong> dan <strong>Kategori Furnitur</strong> sebelum dipublikasikan. Jika barang jadinya misalnya Lemari, ubah kategori ke <strong>Lemari</strong> dan ganti namanya sesuai barang asli (jangan dibiarkan <em>Tangga &amp; Railing Kayu Jati</em>).
+              </span>
+            </div>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-semibold text-bark">
+                Nama Karya (tampil di Katalog &amp; Dashboard)
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Contoh: Lemari Pakaian 3 Pintu Jati / Meja Makan Custom"
+                className="field !py-2 text-xs font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-bark">
+                Kategori Furnitur
+              </label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="field !py-2 text-xs font-semibold"
+              >
+                {CATEGORY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-bark">
+                Kota Pemesan
+              </label>
+              <input
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="Contoh: Kota Jambi"
+                className="field !py-2 text-xs"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-semibold text-bark">
+                Deskripsi Singkat Produk Jadi
+              </label>
+              <input
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Ceritakan bahan, finishing, dan spesifikasi barang jadi"
+                className="field !py-2 text-xs"
+              />
+            </div>
           </div>
 
           <label className="flex cursor-pointer items-center gap-2 text-xs text-bark">
@@ -1011,9 +1136,7 @@ function OrderCard({
   const pendingPayCount = paySummary.pendingRecords.length;
   const customerWaLink = buildCustomerWhatsAppReplyLink(order);
 
-  // Otomatis buka tab Pembayaran kalau ada bukti transfer yang menunggu verifikasi
   const [activeTab, setActiveTab] = useState(pendingPayCount > 0 ? 'payment' : null);
-
   const toggleTab = (tab) => setActiveTab((prev) => (prev === tab ? null : tab));
 
   const same = order.custom
@@ -1023,7 +1146,6 @@ function OrderCard({
 
   return (
     <article className="overflow-hidden rounded-2xl border border-line bg-white shadow-soft transition hover:border-gold/50">
-      {/* BARIS RINGKASAN UTAMA (Rapi & Mudah Dipindai Mata) */}
       <div className="p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -1065,7 +1187,6 @@ function OrderCard({
             </div>
           </div>
 
-          {/* Kanan: Nominal Harga & Status Bayar */}
           <div className="text-left sm:text-right">
             <p className="font-heading text-lg font-bold text-espresso">
               {order.finalPrice != null
@@ -1087,7 +1208,6 @@ function OrderCard({
           </div>
         </div>
 
-        {/* BARIS AKSI & TAB RINGKAS */}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line/80 pt-3.5">
           <div className="flex flex-wrap gap-1.5">
             <button
@@ -1142,7 +1262,6 @@ function OrderCard({
             )}
           </div>
 
-          {/* Kontrol Status + WA + Hapus */}
           <div className="flex flex-wrap items-center gap-2">
             <select
               aria-label="Ubah status pesanan"
@@ -1188,7 +1307,6 @@ function OrderCard({
         </div>
       </div>
 
-      {/* PANEL ISI TAB (Hanya muncul 1 tab yang sedang dipilih) */}
       {activeTab && (
         <div className="border-t border-line bg-cream/35 p-4 sm:p-5">
           {activeTab === 'detail' && (
@@ -1295,15 +1413,45 @@ export default function Orders() {
     savePaymentSettings,
   } = useApp();
 
-  const [filter, setFilter] = useState('Semua');
+  const [filter, setFilter] = useState('Belum Direspon');
+  const [searchQuery, setSearchQuery] = useState('');
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState(null);
   const [receiptOrder, setReceiptOrder] = useState(null);
 
-  const list =
-    filter === 'Semua'
-      ? orders
-      : orders.filter((o) => normalizeStatus(o.status) === filter);
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+
+  const list = useMemo(() => {
+    // Jika Owner mencari ID/Kode/Nama, cari lintas SEMUA status agar komplain langsung ketemu
+    if (trimmedQuery) {
+      return orders.filter((o) => {
+        const hay = [
+          o.orderCode,
+          String(o.id),
+          o.name,
+          o.phone,
+          o.customerEmail,
+          o.product,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return hay.includes(trimmedQuery);
+      });
+    }
+
+    if (filter === 'Belum Direspon') {
+      return orders.filter((o) => isUnrespondedStatus(o.status));
+    }
+    return orders.filter((o) => normalizeStatus(o.status) === filter);
+  }, [orders, filter, trimmedQuery]);
+
+  const countForTab = (key) => {
+    if (key === 'Belum Direspon') {
+      return orders.filter((o) => isUnrespondedStatus(o.status)).length;
+    }
+    return orders.filter((o) => normalizeStatus(o.status) === key).length;
+  };
 
   const bankCount = paymentSettings?.accounts?.length || 0;
 
@@ -1311,7 +1459,7 @@ export default function Orders() {
     <div>
       <PageHeader
         title="Pesanan Masuk"
-        desc="Klik tab pada tiap pesanan untuk mengatur harga, memverifikasi setoran tabungan, atau mengunggah foto hasil jadi."
+        desc="Pesanan baru tampil di Belum Direspon. Begitu Anda respon (tetapkan harga / batalkan / proses), pesanan otomatis berpindah ke tab statusnya."
         action={
           <button
             type="button"
@@ -1324,35 +1472,78 @@ export default function Orders() {
         }
       />
 
-      {/* Filter Status */}
-      <div className="no-scrollbar mb-5 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap">
-        {['Semua', ...statuses].map((s) => {
-          const count =
-            s === 'Semua'
-              ? orders.length
-              : orders.filter((o) => normalizeStatus(o.status) === s).length;
-          return (
+      {/* Kotak Pencarian Cepat berdasarkan Kode/ID Pesanan (cari di semua status) */}
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari ID / Kode Pesanan (mis. MLK-261125-...), nama pemesan, WA, atau produk..."
+            className="field !min-h-[42px] !py-2 !pl-10 !pr-9 text-sm"
+          />
+          {searchQuery && (
             <button
-              key={s}
-              onClick={() => setFilter(s)}
-              aria-pressed={filter === s}
-              className={`min-h-[38px] shrink-0 rounded-full px-3.5 text-xs font-semibold transition sm:text-sm ${
-                filter === s
-                  ? 'border border-gold/40 bg-espresso text-gold-light shadow-soft'
-                  : 'border border-line bg-white text-muted hover:border-gold hover:text-espresso'
-              }`}
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="Hapus pencarian"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted hover:bg-sand hover:text-espresso"
             >
-              {s} ({count})
+              <X size={14} />
             </button>
-          );
-        })}
+          )}
+        </div>
+        {trimmedQuery && (
+          <p className="text-xs font-semibold text-teak">
+            Hasil lintas semua status: <strong>{list.length}</strong> pesanan
+          </p>
+        )}
       </div>
+
+      {/* Filter Status Terpisah */}
+      {!trimmedQuery && (
+        <div className="no-scrollbar mb-5 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap">
+          {TAB_ITEMS.map((t) => {
+            const count = countForTab(t.key);
+            const active = filter === t.key;
+            return (
+              <button
+                key={t.key}
+                onClick={() => setFilter(t.key)}
+                aria-pressed={active}
+                className={`min-h-[38px] shrink-0 rounded-full px-3.5 text-xs font-semibold transition sm:text-sm ${
+                  active
+                    ? 'border border-gold/40 bg-espresso text-gold-light shadow-soft'
+                    : 'border border-line bg-white text-muted hover:border-gold hover:text-espresso'
+                }`}
+              >
+                {t.label} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {list.length === 0 ? (
         <div className="card px-6 py-14 text-center">
           <ShoppingBag size={36} className="mx-auto text-wood" />
           <p className="mt-3 text-base font-semibold text-espresso">
-            {orders.length === 0 ? 'Belum ada pesanan masuk' : 'Tidak ada pesanan pada status ini'}
+            {trimmedQuery
+              ? `Tidak ditemukan pesanan untuk "${searchQuery}"`
+              : filter === 'Belum Direspon'
+                ? 'Semua pesanan masuk sudah direspon'
+                : `Tidak ada pesanan pada tab ${filter}`}
+          </p>
+          <p className="mx-auto mt-1 max-w-md text-xs text-muted">
+            {trimmedQuery
+              ? 'Pastikan kode pesanan (mis. MLK-261125-...) atau nama pemesan sudah benar.'
+              : filter === 'Belum Direspon'
+                ? 'Pilih tab Harga Ditetapkan, Diproses, Selesai, Dibatalkan, atau cari langsung lewat ID pesanan di atas.'
+                : 'Pesanan akan otomatis muncul di sini saat statusnya diperbarui.'}
           </p>
         </div>
       ) : (

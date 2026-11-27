@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
+  AlertCircle,
   Camera,
   CheckCircle2,
   ChevronDown,
@@ -28,6 +29,39 @@ import ResponsiveImage from '../../components/ResponsiveImage';
 import { AddButton, PageHeader, RowActions, confirmDelete } from '../../components/admin/ui';
 
 const CATEGORY_OPTIONS = CUSTOM_CATEGORIES.filter((c) => c !== 'Semua');
+
+const KEYWORD_CATEGORY_MAP = [
+  ['kitchen', 'Kitchen Set'],
+  ['dapur', 'Kitchen Set'],
+  ['minibar', 'Kitchen Set'],
+  ['lemari', 'Lemari'],
+  ['almari', 'Lemari'],
+  ['wardrobe', 'Lemari'],
+  ['meja', 'Meja'],
+  ['kursi', 'Kursi & Sofa'],
+  ['sofa', 'Kursi & Sofa'],
+  ['bangku', 'Kursi & Sofa'],
+  ['dipan', 'Kamar Set & Dipan'],
+  ['ranjang', 'Kamar Set & Dipan'],
+  ['tempat tidur', 'Kamar Set & Dipan'],
+  ['kamar set', 'Kamar Set & Dipan'],
+  ['pintu', 'Pintu, Kusen & Partisi'],
+  ['kusen', 'Pintu, Kusen & Partisi'],
+  ['partisi', 'Pintu, Kusen & Partisi'],
+  ['penyekat', 'Pintu, Kusen & Partisi'],
+  ['buffet', 'Buffet & Backdrop TV'],
+  ['bufet', 'Buffet & Backdrop TV'],
+  ['backdrop', 'Buffet & Backdrop TV'],
+  ['rak', 'Rak, Credenza & Nakas'],
+  ['credenza', 'Rak, Credenza & Nakas'],
+  ['nakas', 'Rak, Credenza & Nakas'],
+  ['mimbar', 'Mimbar & Podium'],
+  ['podium', 'Mimbar & Podium'],
+  ['gazebo', 'Gazebo & Outdoor'],
+  ['pendopo', 'Gazebo & Outdoor'],
+  ['cermin', 'Cermin & Rias'],
+  ['rias', 'Cermin & Rias'],
+];
 
 const fields = [
   { name: 'name', label: 'Nama karya custom', required: true, placeholder: 'Contoh: Kitchen Set Jati Huruf L + Minibar' },
@@ -69,10 +103,32 @@ const blank = {
 };
 
 function guessCategory(order) {
-  const fromType = order?.custom?.design?.type && TYPES[order.custom.design.type]?.label;
-  if (fromType && CATEGORY_OPTIONS.includes(fromType)) return fromType;
-  if (order?.custom?.categoryLabel && CATEGORY_OPTIONS.includes(order.custom.categoryLabel)) {
+  const designType = order?.custom?.design?.type;
+  if (designType && designType !== 'lainnya') {
+    const fromType = TYPES[designType]?.label;
+    if (fromType && CATEGORY_OPTIONS.includes(fromType)) return fromType;
+  }
+  if (
+    order?.custom?.categoryLabel &&
+    order.custom.categoryLabel !== 'Bebas Request' &&
+    CATEGORY_OPTIONS.includes(order.custom.categoryLabel)
+  ) {
     return order.custom.categoryLabel;
+  }
+  const haystack = [
+    order?.custom?.title,
+    order?.product,
+    order?.custom?.options,
+    order?.custom?.note,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  for (const [kw, cat] of KEYWORD_CATEGORY_MAP) {
+    if (haystack.includes(kw) && CATEGORY_OPTIONS.includes(cat)) {
+      return cat;
+    }
   }
   return 'Bebas Request';
 }
@@ -95,6 +151,10 @@ export default function CustomGallery({ embedded = false, addSignal = 0, onAddCo
 
   const [modal, setModal] = useState(null);
   const [approveOrder, setApproveOrder] = useState(null);
+  const [approveName, setApproveName] = useState('');
+  const [approveCategory, setApproveCategory] = useState('Bebas Request');
+  const [approveCity, setApproveCity] = useState('Kota Jambi');
+  const [approveDesc, setApproveDesc] = useState('');
   const [approvePhotos, setApprovePhotos] = useState([]);
   const [approveShowFeedback, setApproveShowFeedback] = useState(true);
   const [approving, setApproving] = useState(false);
@@ -111,7 +171,6 @@ export default function CustomGallery({ embedded = false, addSignal = 0, onAddCo
     }
   }, [addSignal, filter, onAddConsumed]);
 
-  // Pesanan custom yang sudah berstatus Selesai namun belum disetujui masuk ke Karya Pernah Dicustom
   const pendingCompletedOrders = useMemo(() => {
     return orders.filter((o) => {
       if (!o.custom || o.status !== 'Selesai') return false;
@@ -164,7 +223,15 @@ export default function CustomGallery({ embedded = false, addSignal = 0, onAddCo
   };
 
   const openApproveModal = (order) => {
+    const review = testimonials.find((t) => Number(t.orderId) === Number(order.id));
     setApproveOrder(order);
+    setApproveName(order.custom?.title || order.product || '');
+    setApproveCategory(guessCategory(order));
+    setApproveCity(review?.city || guessCity(order.address));
+    setApproveDesc(
+      order.custom?.options ||
+        `Hasil pesanan custom ${order.custom?.title || order.product} kayu jati solid.`,
+    );
     setApprovePhotos(Array.isArray(order.finishedPhotos) ? order.finishedPhotos : []);
     setApproveShowFeedback(true);
   };
@@ -175,13 +242,16 @@ export default function CustomGallery({ embedded = false, addSignal = 0, onAddCo
       toast.error('Upload minimal 1 foto barang yang sudah jadi terlebih dahulu.');
       return;
     }
+    if (approveName.trim().length < 2) {
+      toast.error('Tuliskan nama karya yang sesuai barang jadinya.');
+      return;
+    }
     setApproving(true);
     try {
       const review = testimonials.find((t) => Number(t.orderId) === Number(approveOrder.id));
-      const category = guessCategory(approveOrder);
       const typeKey =
+        CUSTOM_TYPE_KEYS.find((k) => TYPES[k].label === approveCategory) ||
         approveOrder.custom?.design?.type ||
-        CUSTOM_TYPE_KEYS.find((k) => TYPES[k].label === category) ||
         'lainnya';
       const preset = approveOrder.custom?.design
         ? {
@@ -192,16 +262,14 @@ export default function CustomGallery({ embedded = false, addSignal = 0, onAddCo
         : undefined;
 
       await publishCustomOrder(approveOrder, {
-        name: approveOrder.custom?.title || approveOrder.product,
+        name: approveName.trim(),
         typeKey,
-        category,
+        category: approveCategory,
         size: approveOrder.custom?.size || 'Sesuai pesanan',
         finish: approveOrder.custom?.finish || 'Natural Jati (Doff)',
-        city: review?.city || guessCity(approveOrder.address),
+        city: approveCity.trim() || 'Kota Jambi',
         year: String(new Date().getFullYear()),
-        description:
-          approveOrder.custom?.options ||
-          `Hasil pesanan custom ${approveOrder.custom?.title || approveOrder.product} kayu jati solid.`,
+        description: approveDesc.trim(),
         images: approvePhotos,
         image: approvePhotos[0]?.url || '',
         preset,
@@ -212,7 +280,7 @@ export default function CustomGallery({ embedded = false, addSignal = 0, onAddCo
         price: approveOrder.finalPrice ?? approveOrder.total ?? null,
         isPublished: true,
       });
-      toast.success('Disetujui! Foto hasil jadi & karya custom kini tayang di Katalog Publik.');
+      toast.success(`Disetujui! Karya tayang di kategori ${approveCategory}.`);
       setApproveOrder(null);
     } finally {
       setApproving(false);
@@ -358,7 +426,6 @@ export default function CustomGallery({ embedded = false, addSignal = 0, onAddCo
         />
       )}
 
-      {/* Panel Pesanan Custom Selesai yang Menunggu Persetujuan Publikasi */}
       {pendingCompletedOrders.length > 0 && (
         <section className="mb-6 rounded-2xl border-2 border-gold/50 bg-gradient-to-br from-amber-50/80 via-cream to-sand/50 p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -370,7 +437,7 @@ export default function CustomGallery({ embedded = false, addSignal = 0, onAddCo
                 Pesanan Custom Sudah Selesai — Siap Dipublikasikan
               </h2>
               <p className="text-xs text-muted">
-                Unggah foto produk yang sudah jadi, cek feedback pemesan, lalu setujui agar pelanggan lain bisa langsung memesan model serupa.
+                Unggah foto produk jadi, pastikan nama &amp; kategori sudah tepat, lalu setujui agar tayang di galeri.
               </p>
             </div>
           </div>
@@ -450,7 +517,6 @@ export default function CustomGallery({ embedded = false, addSignal = 0, onAddCo
         </section>
       )}
 
-      {/* Pencarian Cepat */}
       <div className="relative mb-4 sm:max-w-sm">
         <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
         <input
@@ -472,7 +538,6 @@ export default function CustomGallery({ embedded = false, addSignal = 0, onAddCo
         )}
       </div>
 
-      {/* Filter Pill Jenis Furnitur */}
       <div className="no-scrollbar mb-6 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap">
         {CUSTOM_CATEGORIES.map((cat) => {
           const count = cat === 'Semua' ? customPortfolio.length : customPortfolio.filter((x) => x.category === cat).length;
@@ -537,24 +602,71 @@ export default function CustomGallery({ embedded = false, addSignal = 0, onAddCo
         </div>
       )}
 
-      {/* Modal Persetujuan Publikasi Pesanan Selesai */}
+      {/* Modal Persetujuan Publikasi Pesanan Selesai (bisa ubah Nama & Kategori langsung) */}
       <AnimatePresence>
         {approveOrder && (
           <Modal title="Setujui & Publikasikan Karya Custom" onClose={() => setApproveOrder(null)}>
-            <div className="rounded-xl bg-cream p-3.5 text-sm">
-              <p className="font-bold text-espresso">{approveOrder.custom?.title || approveOrder.product}</p>
-              <p className="mt-0.5 text-xs text-muted">
-                Pemesan: {approveOrder.name} · {approveOrder.custom?.size || 'Sesuai pesanan'} · {approveOrder.custom?.finish}
-              </p>
-            </div>
+            <div className="space-y-4">
+              {(approveCategory === 'Bebas Request' || /tangga\s*&\s*railing/i.test(approveName)) && (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                  <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                  <span>
+                    Pastikan <strong>Nama Karya</strong> dan <strong>Kategori Furnitur</strong> sesuai barang jadinya (misal jika produknya Lemari, pilih kategori <strong>Lemari</strong> dan ganti namanya).
+                  </span>
+                </div>
+              )}
 
-            <div className="mt-4 space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-semibold text-bark">
+                    Nama Karya (tampil di Katalog &amp; Dashboard)
+                  </label>
+                  <input
+                    type="text"
+                    value={approveName}
+                    onChange={(e) => setApproveName(e.target.value)}
+                    placeholder="Contoh: Lemari Pakaian 3 Pintu Jati"
+                    className="field !py-2 text-sm font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-bark">Kategori Furnitur</label>
+                  <select
+                    value={approveCategory}
+                    onChange={(e) => setApproveCategory(e.target.value)}
+                    className="field !py-2 text-sm font-semibold"
+                  >
+                    {CATEGORY_OPTIONS.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-bark">Kota Pemesan</label>
+                  <input
+                    type="text"
+                    value={approveCity}
+                    onChange={(e) => setApproveCity(e.target.value)}
+                    className="field !py-2 text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-semibold text-bark">Deskripsi Singkat</label>
+                  <input
+                    type="text"
+                    value={approveDesc}
+                    onChange={(e) => setApproveDesc(e.target.value)}
+                    className="field !py-2 text-sm"
+                  />
+                </div>
+              </div>
+
               <div>
-                <p className="mb-2 text-sm font-semibold text-bark">Foto Produk yang Sudah Jadi (wajib min. 1)</p>
+                <p className="mb-2 text-xs font-semibold text-bark">Foto Produk yang Sudah Jadi (wajib min. 1)</p>
                 <PhotoUploader value={approvePhotos} onChange={setApprovePhotos} max={4} />
               </div>
 
-              <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-line bg-cream/70 p-3 text-sm text-bark">
+              <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-line bg-cream/70 p-3 text-xs text-bark">
                 <input
                   type="checkbox"
                   checked={approveShowFeedback}
