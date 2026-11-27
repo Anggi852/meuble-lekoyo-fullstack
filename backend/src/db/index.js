@@ -64,6 +64,9 @@ ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS show_on_home BOOLEAN NOT NULL 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS finished_photos JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS published_portfolio_id BIGINT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_records JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS price_agreed_at TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS price_adjustment JSONB;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS price_history JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_id BIGINT;
 ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_code TEXT NOT NULL DEFAULT '';
@@ -234,6 +237,9 @@ function createJsonDriver() {
     finishedPhotos: Array.isArray(o.finishedPhotos) ? o.finishedPhotos : [],
     publishedPortfolioId: o.publishedPortfolioId ?? null,
     paymentRecords: Array.isArray(o.paymentRecords) ? o.paymentRecords : [],
+    priceAgreedAt: o.priceAgreedAt || null,
+    priceAdjustment: o.priceAdjustment || null,
+    priceHistory: Array.isArray(o.priceHistory) ? o.priceHistory : [],
   });
 
   return {
@@ -373,6 +379,9 @@ function createJsonDriver() {
         finishedPhotos: Array.isArray(data.finishedPhotos) ? data.finishedPhotos : [],
         publishedPortfolioId: data.publishedPortfolioId ?? null,
         paymentRecords: Array.isArray(data.paymentRecords) ? data.paymentRecords : [],
+        priceAgreedAt: null,
+        priceAdjustment: null,
+        priceHistory: [],
         createdAt: new Date().toISOString(),
         ...data,
         total: data.finalPrice != null ? Number(data.finalPrice) : estimated,
@@ -661,6 +670,9 @@ function createPostgresDriver(connectionString) {
         ? null
         : Number(r.published_portfolio_id),
     paymentRecords: Array.isArray(r.payment_records) ? r.payment_records : [],
+    priceAgreedAt: r.price_agreed_at || null,
+    priceAdjustment: r.price_adjustment || null,
+    priceHistory: Array.isArray(r.price_history) ? r.price_history : [],
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
   });
 
@@ -1005,11 +1017,19 @@ function createPostgresDriver(connectionString) {
       const nextPaymentRecords = Array.isArray(patch.paymentRecords)
         ? patch.paymentRecords
         : o.paymentRecords || [];
+      const nextPriceAgreedAt =
+        patch.priceAgreedAt !== undefined ? patch.priceAgreedAt : o.priceAgreedAt ?? null;
+      const nextPriceAdjustment =
+        patch.priceAdjustment !== undefined ? patch.priceAdjustment : o.priceAdjustment ?? null;
+      const nextPriceHistory = Array.isArray(patch.priceHistory)
+        ? patch.priceHistory
+        : o.priceHistory || [];
 
       const { rows } = await pool.query(
         `UPDATE orders
          SET status=$2, made_before=$3, made_note=$4, final_price=$5, owner_note=$6, total=$7,
-             finished_photos=$8, published_portfolio_id=$9, payment_records=$10
+             finished_photos=$8, published_portfolio_id=$9, payment_records=$10,
+             price_agreed_at=$11, price_adjustment=$12, price_history=$13
          WHERE id=$1 RETURNING *`,
         [
           Number(id),
@@ -1022,6 +1042,9 @@ function createPostgresDriver(connectionString) {
           JSON.stringify(nextFinishedPhotos),
           nextPublishedPortfolioId,
           JSON.stringify(nextPaymentRecords),
+          nextPriceAgreedAt,
+          nextPriceAdjustment ? JSON.stringify(nextPriceAdjustment) : null,
+          JSON.stringify(nextPriceHistory),
         ],
       );
       return mapOrder(rows[0]);

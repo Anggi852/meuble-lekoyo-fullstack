@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS orders (
   quantity INTEGER NOT NULL DEFAULT 1,
   payment TEXT NOT NULL,
   total BIGINT NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT 'Menunggu Konfirmasi WA',
+  status TEXT NOT NULL DEFAULT 'Menunggu Harga Owner',
   custom JSONB,
   made_before BOOLEAN NOT NULL DEFAULT FALSE,
   made_note TEXT NOT NULL DEFAULT '',
@@ -90,10 +90,29 @@ CREATE TABLE IF NOT EXISTS metrics (
   value JSONB NOT NULL
 );
 
--- Migrasi aman jika tabel orders sudah pernah dibuat di versi sebelumnya
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS store_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL
+);
 
--- Migrasi aman untuk rating, produk terkait, & ulasan pembeli terverifikasi
+-- Migrasi aman untuk tabel orders, custom_portfolio & testimonials
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS finished_photos JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS published_portfolio_id BIGINT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_records JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS price_agreed_at TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS price_adjustment JSONB;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS price_history JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_id BIGINT;
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_feedback TEXT NOT NULL DEFAULT '';
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_rating INTEGER;
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS show_feedback BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS price INTEGER;
+ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT TRUE;
+
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS rating INTEGER NOT NULL DEFAULT 5;
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS product_id BIGINT;
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS product_name TEXT NOT NULL DEFAULT '';
@@ -101,29 +120,3 @@ ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS order_id BIGINT;
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS user_email TEXT NOT NULL DEFAULT '';
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'owner';
 ALTER TABLE testimonials ADD COLUMN IF NOT EXISTS show_on_home BOOLEAN NOT NULL DEFAULT TRUE;
-
--- Migrasi aman untuk foto hasil jadi pesanan & publikasi ke karya pernah dicustom
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS finished_photos JSONB NOT NULL DEFAULT '[]'::jsonb;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS published_portfolio_id BIGINT;
-
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_id BIGINT;
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_code TEXT NOT NULL DEFAULT '';
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_name TEXT NOT NULL DEFAULT '';
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_feedback TEXT NOT NULL DEFAULT '';
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_rating INTEGER;
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS show_feedback BOOLEAN NOT NULL DEFAULT TRUE;
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS price INTEGER;
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT TRUE;
-
--- Migrasi aman untuk foto hasil jadi pesanan & publikasi ke karya pernah dicustom
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS finished_photos JSONB NOT NULL DEFAULT '[]'::jsonb;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS published_portfolio_id BIGINT;
-
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_id BIGINT;
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS order_code TEXT NOT NULL DEFAULT '';
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_name TEXT NOT NULL DEFAULT '';
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_feedback TEXT NOT NULL DEFAULT '';
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS customer_rating INTEGER;
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS show_feedback BOOLEAN NOT NULL DEFAULT TRUE;
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS price INTEGER;
-ALTER TABLE custom_portfolio ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT TRUE;

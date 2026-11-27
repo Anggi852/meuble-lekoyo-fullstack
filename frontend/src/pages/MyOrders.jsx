@@ -26,6 +26,10 @@ import {
   Building2,
   QrCode,
   AlertCircle,
+  Lock,
+  ShieldCheck,
+  AlertTriangle,
+  History,
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import PaymentReceiptModal from '../components/PaymentReceiptModal';
@@ -36,12 +40,19 @@ import { formatRupiah } from '../utils/format';
 import { compressImageFile } from '../utils/image';
 import { getPaymentSummary } from '../utils/payment';
 
+const hasActivePayments = (order) =>
+  Array.isArray(order?.paymentRecords) &&
+  order.paymentRecords.some(
+    (r) => r.status === 'Terverifikasi' || r.status === 'Menunggu Verifikasi',
+  );
+
+const isOrderPriceLocked = (order) => Boolean(order?.priceAgreedAt) || hasActivePayments(order);
+
 const normalizeStatus = (order) => {
   const s = order?.status;
-  if (s === 'Baru' || s === 'Menunggu Konfirmasi WA') {
-    return order?.finalPrice != null && Number(order.finalPrice) > 0
-      ? 'Harga Ditetapkan'
-      : 'Menunggu Harga Owner';
+  const hasFinal = order?.finalPrice != null && Number(order.finalPrice) > 0;
+  if (s === 'Baru' || s === 'Menunggu Konfirmasi WA' || s === 'Menunggu Harga Owner') {
+    return hasFinal || isOrderPriceLocked(order) ? 'Harga Ditetapkan' : 'Menunggu Harga Owner';
   }
   return s || 'Menunggu Harga Owner';
 };
@@ -66,10 +77,17 @@ export default function MyOrders() {
     testimonials,
     submitOrderReview,
     submitOrderPayment,
+    agreeOrderPrice,
+    respondPriceAdjustment,
     paymentSettings,
   } = useApp();
 
   const [refreshing, setRefreshing] = useState(false);
+  const [agreeingId, setAgreeingId] = useState(null);
+  const [respondingAdjId, setRespondingAdjId] = useState(null);
+  const [rejectAdjOrderId, setRejectAdjOrderId] = useState(null);
+  const [rejectAdjNote, setRejectAdjNote] = useState('');
+
   const [reviewOrder, setReviewOrder] = useState(null);
   const [rating, setRating] = useState(5);
   const [city, setCity] = useState('');
@@ -114,6 +132,36 @@ export default function MyOrders() {
       toast.success('Berhasil masuk dengan Google.');
     } catch (err) {
       toast.error(extractApiError(err, 'Gagal masuk dengan Google.'));
+    }
+  };
+
+  const handleAgreePrice = async (order) => {
+    setAgreeingId(order.id);
+    try {
+      await agreeOrderPrice(order.id);
+      toast.success('Harga final disepakati & terkunci! Anda kini bisa lanjut membayar.');
+    } catch {
+      // Error sudah ditangani di AppContext
+    } finally {
+      setAgreeingId(null);
+    }
+  };
+
+  const handleRespondAdjustment = async (orderId, decision, note = '') => {
+    setRespondingAdjId(orderId);
+    try {
+      await respondPriceAdjustment(orderId, { decision, note: note.trim() });
+      if (decision === 'approve') {
+        toast.success('Penyesuaian harga disetujui. Total & sisa tagihan telah diperbarui.');
+      } else {
+        toast.info('Penyesuaian harga ditolak. Harga lama tetap berlaku; silakan diskusikan di WA.');
+      }
+      setRejectAdjOrderId(null);
+      setRejectAdjNote('');
+    } catch {
+      // Error sudah ditangani di AppContext
+    } finally {
+      setRespondingAdjId(null);
     }
   };
 
@@ -235,7 +283,7 @@ export default function MyOrders() {
     }
   };
 
-  const buildWaLink = (order) => {
+  const buildWaLink = (order, customIntro = '') => {
     const summary = getPaymentSummary(order);
     const est = Number(order.estimatedPrice ?? order.total) || 0;
     const hargaText =
@@ -245,7 +293,7 @@ export default function MyOrders() {
           ? `Estimasi Awal: ${formatRupiah(est)}`
           : 'Harga: Menunggu konfirmasi Owner';
     const text = [
-      `Halo Pak Nanang, saya ingin konfirmasi pesanan saya:`,
+      customIntro || 'Halo Pak Nanang, saya ingin konfirmasi pesanan saya:',
       `• Kode Pesanan: ${order.orderCode || `#${order.id}`}`,
       `• Produk: ${order.product} (${order.quantity} unit)`,
       `• Sistem Bayar: ${order.payment}`,
@@ -293,7 +341,7 @@ export default function MyOrders() {
             Pesanan Saya
           </h1>
           <p className="mx-auto mt-2 max-w-md text-sm text-muted">
-            Masuk dengan akun Google Anda untuk melihat status pesanan, buku tabungan &amp; sisa tagihan, serta mengunduh bukti pelunasan.
+            Masuk dengan akun Google Anda untuk melihat status pesanan, menyetujui harga final, memantau buku tabungan, dan mengunduh bukti pelunasan.
           </p>
           <div className="mt-6 flex justify-center">
             <GoogleLogin
@@ -365,6 +413,10 @@ export default function MyOrders() {
             const isCancelled = displayStatus === 'Dibatalkan';
             const existingReview = testimonials.find((t) => Number(t.orderId) === Number(order.id));
             const paySummary = getPaymentSummary(order);
+            const isLocked = isOrderPriceLocked(order);
+            const pendingAdj =
+              order.priceAdjustment?.status === 'pending' ? order.priceAdjustment : null;
+            const priceHistory = Array.isArray(order.priceHistory) ? order.priceHistory : [];
 
             return (
               <article
@@ -380,6 +432,11 @@ export default function MyOrders() {
                       <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}>
                         {displayStatus}
                       </span>
+                      {hasFinalPrice && isLocked && !isCancelled && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">
+                          <Lock size={11} /> Harga Disepakati
+                        </span>
+                      )}
                     </div>
                     <h2 className="font-heading mt-2 text-lg font-bold text-espresso">
                       {order.product}
@@ -395,7 +452,9 @@ export default function MyOrders() {
                   <div className="text-left sm:text-right">
                     {hasFinalPrice ? (
                       <>
-                        <p className="text-xs font-semibold text-emerald-700">Harga Final Owner</p>
+                        <p className="text-xs font-semibold text-emerald-700">
+                          {isLocked ? 'Harga Disepakati' : 'Penawaran Harga Final'}
+                        </p>
                         <p className="font-heading text-xl font-bold text-espresso">
                           {formatRupiah(order.finalPrice)}
                         </p>
@@ -418,7 +477,137 @@ export default function MyOrders() {
                 </div>
 
                 <div className="space-y-4 p-5">
-                  {hasFinalPrice && !isCancelled && (
+                  {/* TAHAP PERSETUJUAN HARGA FINAL (Sebelum pembayaran dibuka) */}
+                  {hasFinalPrice && !isCancelled && !isLocked && (
+                    <div className="rounded-2xl border-2 border-gold/50 bg-amber-50/55 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-teak">
+                            <ShieldCheck size={15} className="text-gold-dark" />
+                            Konfirmasi Kesepakatan Harga Final
+                          </p>
+                          <p className="mt-1 text-sm text-espresso">
+                            Pak Nanang menetapkan harga final sebesar{' '}
+                            <strong className="text-teak">{formatRupiah(order.finalPrice)}</strong>.
+                            Setujui harga ini untuk mengunci kesepakatan dan membuka menu pembayaran.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 rounded-xl border border-gold/30 bg-white/90 p-3 text-xs leading-relaxed text-muted">
+                        <p>
+                          • Setelah disetujui, harga <strong>terkunci</strong> dan tidak dapat diubah sepihak oleh Owner.
+                        </p>
+                        <p className="mt-1">
+                          • Khusus <strong>Sistem Tabung</strong> jangka panjang atau perubahan spesifikasi, penyesuaian akibat kenaikan bahan baku kayu hanya dapat berlaku apabila diajukan resmi dan <strong>disetujui ulang oleh Anda</strong>.
+                        </p>
+                      </div>
+
+                      <div className="mt-3.5 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleAgreePrice(order)}
+                          disabled={agreeingId === order.id}
+                          className="btn-primary !min-h-[40px] !px-4 text-xs sm:text-sm"
+                        >
+                          <CheckCircle2 size={15} className="text-gold-light" />
+                          {agreeingId === order.id
+                            ? 'Menyetujui...'
+                            : 'Setujui Harga & Lanjut Bayar'}
+                        </button>
+                        <a
+                          href={buildWaLink(
+                            order,
+                            'Halo Pak Nanang, saya ingin berdiskusi / negosiasi harga final untuk pesanan ini:',
+                          )}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-soft !min-h-[40px] !px-4 text-xs sm:text-sm"
+                        >
+                          <MessageCircle size={14} className="text-gold-dark" /> Negosiasi via WA
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* PENGAJUAN PENYESUAIAN HARGA (ADENDUM DUA ARAH DARI OWNER) */}
+                  {pendingAdj && !isCancelled && (
+                    <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-4">
+                      <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-900">
+                        <AlertTriangle size={15} className="text-amber-700" />
+                        Pengajuan Penyesuaian Harga dari Owner
+                      </p>
+                      <p className="mt-1.5 text-sm text-espresso">
+                        Harga sebelumnya <strong>{formatRupiah(pendingAdj.previousPrice)}</strong>{' '}
+                        diajukan berubah menjadi{' '}
+                        <strong className="text-teak">{formatRupiah(pendingAdj.proposedPrice)}</strong>{' '}
+                        ({pendingAdj.proposedPrice > pendingAdj.previousPrice ? '+' : '-'}
+                        {formatRupiah(Math.abs(pendingAdj.proposedPrice - pendingAdj.previousPrice))}).
+                      </p>
+                      <p className="mt-1.5 rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs text-bark">
+                        <strong>Alasan Owner:</strong> {pendingAdj.reason}
+                      </p>
+                      <p className="mt-2 text-[11px] text-muted">
+                        Harga baru hanya berlaku jika Anda menyetujuinya. Pembayaran dijeda sementara sampai Anda memberikan keputusan.
+                      </p>
+
+                      {rejectAdjOrderId === order.id ? (
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                          <input
+                            type="text"
+                            value={rejectAdjNote}
+                            onChange={(e) => setRejectAdjNote(e.target.value)}
+                            placeholder="Catatan penolakan (opsional, mis. Minta diskusi dulu via WA)"
+                            className="field flex-1 !py-2 text-xs"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              disabled={respondingAdjId === order.id}
+                              onClick={() =>
+                                handleRespondAdjustment(order.id, 'reject', rejectAdjNote)
+                              }
+                              className="rounded-xl bg-red-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-red-700"
+                            >
+                              Konfirmasi Tolak
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRejectAdjOrderId(null)}
+                              className="rounded-xl border border-line bg-white px-3 py-2 text-xs font-semibold"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={respondingAdjId === order.id}
+                            onClick={() => handleRespondAdjustment(order.id, 'approve')}
+                            className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl bg-emerald-600 px-4 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-55"
+                          >
+                            <CheckCircle2 size={14} /> Setujui Penyesuaian
+                          </button>
+                          <button
+                            type="button"
+                            disabled={respondingAdjId === order.id}
+                            onClick={() => {
+                              setRejectAdjOrderId(order.id);
+                              setRejectAdjNote('');
+                            }}
+                            className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-red-300 bg-white px-4 text-xs font-bold text-red-700 hover:bg-red-50"
+                          >
+                            <XCircle size={14} /> Tolak Penyesuaian
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* KARTU BUKU TABUNGAN / PEMBAYARAN TUNAI (Terbuka setelah harga disepakati) */}
+                  {hasFinalPrice && !isCancelled && isLocked && (
                     <div className="rounded-2xl border border-gold/30 bg-cream/55 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-teak">
@@ -427,7 +616,7 @@ export default function MyOrders() {
                         </p>
 
                         <div className="flex flex-wrap gap-2">
-                          {!paySummary.isPaidOff && (
+                          {!paySummary.isPaidOff && !pendingAdj && (
                             <button
                               type="button"
                               onClick={() => openPayModal(order)}
@@ -569,6 +758,23 @@ export default function MyOrders() {
                           </div>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* Riwayat Adendum Penyesuaian Harga yang Disetujui */}
+                  {priceHistory.length > 0 && (
+                    <div className="rounded-xl border border-line bg-cream/60 p-3 text-xs">
+                      <p className="flex items-center gap-1 font-bold uppercase tracking-wider text-muted">
+                        <History size={12} /> Riwayat Penyesuaian Harga Disetujui ({priceHistory.length})
+                      </p>
+                      <div className="mt-1.5 space-y-1">
+                        {priceHistory.map((h, i) => (
+                          <p key={h.id || i} className="text-bark">
+                            • {formatRupiah(h.previousPrice)} → <strong>{formatRupiah(h.newPrice)}</strong>{' '}
+                            <span className="text-muted">({h.reason})</span>
+                          </p>
+                        ))}
+                      </div>
                     </div>
                   )}
 

@@ -1,14 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Wallet, ShoppingBag, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Bell, Wallet, ShoppingBag, ArrowRight, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { formatRupiah } from '../../utils/format';
 import { getPaymentSummary } from '../../utils/payment';
 
 function resolveStatus(order) {
   const s = order?.status;
-  if (s === 'Baru' || s === 'Menunggu Konfirmasi WA') {
-    return order?.finalPrice != null && Number(order.finalPrice) > 0
+  const hasFinal = order?.finalPrice != null && Number(order.finalPrice) > 0;
+  const hasPayments =
+    Array.isArray(order?.paymentRecords) &&
+    order.paymentRecords.some((r) => r.status === 'Terverifikasi' || r.status === 'Menunggu Verifikasi');
+
+  if (s === 'Baru' || s === 'Menunggu Konfirmasi WA' || s === 'Menunggu Harga Owner') {
+    return hasFinal || hasPayments || order?.priceAgreedAt
       ? 'Harga Ditetapkan'
       : 'Menunggu Harga Owner';
   }
@@ -56,6 +61,19 @@ export default function NotificationBell({ onSelectItem, compact = false, dark =
           time: rec.createdAt || rec.date || order.createdAt,
         });
       });
+
+      if (order.priceAdjustment?.status === 'rejected') {
+        items.push({
+          id: `adj-rej-${order.id}-${order.priceAdjustment.id || 0}`,
+          type: 'adjustment',
+          orderId: order.id,
+          tab: 'detail',
+          orderCode: order.orderCode || `#${order.id}`,
+          title: `${order.name} · Menolak Penyesuaian Harga`,
+          detail: `Usulan ${formatRupiah(order.priceAdjustment.proposedPrice)} ditolak — ${order.product}`,
+          time: order.priceAdjustment.respondedAt || order.createdAt,
+        });
+      }
 
       if (resolveStatus(order) === 'Menunggu Harga Owner') {
         items.push({
@@ -153,10 +171,18 @@ export default function NotificationBell({ onSelectItem, compact = false, dark =
                     className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl ${
                       item.type === 'payment'
                         ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-amber-100 text-amber-800'
+                        : item.type === 'adjustment'
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-amber-100 text-amber-800'
                     }`}
                   >
-                    {item.type === 'payment' ? <Wallet size={15} /> : <ShoppingBag size={15} />}
+                    {item.type === 'payment' ? (
+                      <Wallet size={15} />
+                    ) : item.type === 'adjustment' ? (
+                      <AlertTriangle size={15} />
+                    ) : (
+                      <ShoppingBag size={15} />
+                    )}
                   </span>
                   <div className="min-w-0 flex-1">
                     <span className="inline-block rounded bg-espresso px-1.5 py-0.5 font-mono text-[10px] font-bold text-gold-light">

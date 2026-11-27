@@ -33,13 +33,15 @@ export default function AdminLayout() {
     year: 'numeric',
   });
 
-  // Hitung hanya pesanan yang benar-benar belum direspon (sama persis dengan tab Belum Direspon)
+  // Hitung hanya pesanan yang benar-benar belum diberi harga / belum ada pembayaran
   const newOrders = orders.filter((o) => {
     const s = o?.status;
-    if (s === 'Baru' || s === 'Menunggu Konfirmasi WA') {
-      return !(o?.finalPrice != null && Number(o.finalPrice) > 0);
-    }
-    return s === 'Menunggu Harga Owner';
+    const hasFinal = o?.finalPrice != null && Number(o.finalPrice) > 0;
+    const hasPayments =
+      Array.isArray(o?.paymentRecords) &&
+      o.paymentRecords.some((r) => r.status === 'Terverifikasi' || r.status === 'Menunggu Verifikasi');
+    if (hasFinal || hasPayments || o?.priceAgreedAt) return false;
+    return s === 'Menunggu Harga Owner' || s === 'Menunggu Konfirmasi WA' || s === 'Baru';
   }).length;
 
   const items = [
@@ -84,7 +86,6 @@ export default function AdminLayout() {
 
   return (
     <div className="min-h-[100dvh] bg-cream lg:grid lg:grid-cols-[272px_1fr]">
-      {/* Sidebar Desktop Mewah */}
       <aside className="luxury-dark sticky top-0 hidden h-screen flex-col border-r border-gold/25 p-5 text-cream/80 lg:flex">
         <div className="pb-5">{Brand}</div>
         <div className="gold-divider mb-5" aria-hidden="true" />
@@ -142,7 +143,6 @@ export default function AdminLayout() {
       </aside>
 
       <div className="min-w-0 flex flex-col">
-        {/* Topbar Desktop — Notifikasi tampil konsisten di semua halaman Dashboard */}
         <header className="sticky top-0 z-30 hidden items-center justify-between border-b border-gold/20 bg-cream/90 px-8 py-3.5 backdrop-blur-md lg:flex">
           <div className="flex items-center gap-2.5 text-sm">
             <span className="font-heading text-base font-bold text-espresso">
@@ -188,7 +188,6 @@ export default function AdminLayout() {
           </div>
         </header>
 
-        {/* Header Mobile — Lonceng Notifikasi selalu terlihat di pojok kanan atas */}
         <header className="luxury-dark safe-pt sticky top-0 z-30 border-b border-gold/30 lg:hidden">
           <div className="flex items-center justify-between px-4 py-3.5">
             {Brand}

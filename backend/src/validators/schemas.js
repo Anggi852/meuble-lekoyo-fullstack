@@ -106,6 +106,22 @@ export const orderUpdateSchema = Joi.object({
   publishedPortfolioId: Joi.number().integer().allow(null).optional(),
 }).min(1);
 
+export const priceAdjustmentCreateSchema = Joi.object({
+  proposedPrice: Joi.number().integer().min(1000).max(500000000).required().messages({
+    'number.min': 'Harga penyesuaian minimal Rp 1.000.',
+    'any.required': 'Harga baru wajib diisi.',
+  }),
+  reason: Joi.string().trim().min(5).max(400).required().messages({
+    'string.empty': 'Alasan penyesuaian harga wajib diisi.',
+    'string.min': 'Tuliskan alasan penyesuaian minimal 5 karakter agar jelas bagi pelanggan.',
+  }),
+});
+
+export const priceAdjustmentRespondSchema = Joi.object({
+  decision: Joi.string().valid('approve', 'reject').required(),
+  note: Joi.string().trim().allow('', null).max(300).default(''),
+});
+
 export const paymentRecordCreateSchema = Joi.object({
   amount: Joi.number().integer().min(1000).max(500000000).required().messages({
     'number.min': 'Nominal pembayaran minimal Rp 1.000.',

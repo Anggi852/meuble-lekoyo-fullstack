@@ -554,7 +554,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  /* -------------------- PESANAN, PEMBAYARAN & PENJUALAN -------------------- */
+  /* -------------------- PESANAN, KESEPAKATAN HARGA & PEMBAYARAN -------------------- */
   const syncUpdatedOrder = (orderId, updated) => {
     const idNum = Number(orderId);
     setOrders((prev) => prev.map((o) => (Number(o.id) === idNum ? updated : o)));
@@ -593,8 +593,10 @@ export function AppProvider({ children }) {
     try {
       const updated = await api.updateOrder(id, { status });
       syncUpdatedOrder(id, updated);
+      return updated;
     } catch (err) {
       toast.error(extractApiError(err, 'Gagal memperbarui status pesanan.'));
+      throw err;
     }
   };
 
@@ -602,8 +604,56 @@ export function AppProvider({ children }) {
     try {
       const updated = await api.updateOrder(id, patch);
       syncUpdatedOrder(id, updated);
+      return updated;
     } catch (err) {
       toast.error(extractApiError(err, 'Gagal memperbarui pesanan.'));
+      throw err;
+    }
+  };
+
+  const agreeOrderPrice = async (orderId) => {
+    try {
+      const updated = await api.agreeOrderPrice(orderId);
+      syncUpdatedOrder(orderId, updated);
+      if (user?.email && !isLoggedIn) loadMyActivities();
+      return updated;
+    } catch (err) {
+      toast.error(extractApiError(err, 'Gagal menyetujui harga final.'));
+      throw err;
+    }
+  };
+
+  const proposePriceAdjustment = async (orderId, payload) => {
+    try {
+      const updated = await api.proposePriceAdjustment(orderId, payload);
+      syncUpdatedOrder(orderId, updated);
+      return updated;
+    } catch (err) {
+      toast.error(extractApiError(err, 'Gagal mengajukan penyesuaian harga.'));
+      throw err;
+    }
+  };
+
+  const cancelPriceAdjustment = async (orderId) => {
+    try {
+      const updated = await api.cancelPriceAdjustment(orderId);
+      syncUpdatedOrder(orderId, updated);
+      return updated;
+    } catch (err) {
+      toast.error(extractApiError(err, 'Gagal membatalkan pengajuan penyesuaian harga.'));
+      throw err;
+    }
+  };
+
+  const respondPriceAdjustment = async (orderId, payload) => {
+    try {
+      const updated = await api.respondPriceAdjustment(orderId, payload);
+      syncUpdatedOrder(orderId, updated);
+      if (user?.email && !isLoggedIn) loadMyActivities();
+      return updated;
+    } catch (err) {
+      toast.error(extractApiError(err, 'Gagal mengirim tanggapan penyesuaian harga.'));
+      throw err;
     }
   };
 
@@ -774,6 +824,10 @@ export function AppProvider({ children }) {
     addOrder,
     updateOrderStatus,
     updateOrder,
+    agreeOrderPrice,
+    proposePriceAdjustment,
+    cancelPriceAdjustment,
+    respondPriceAdjustment,
     submitOrderPayment,
     verifyOrderPayment,
     deleteOrderPayment,

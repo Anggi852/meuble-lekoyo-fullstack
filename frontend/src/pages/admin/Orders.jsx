@@ -34,6 +34,9 @@ import {
   AlertCircle,
   Bell,
   ArrowRight,
+  Lock,
+  AlertTriangle,
+  FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useApp } from '../../context/AppContext';
@@ -49,13 +52,15 @@ import { getPaymentSummary } from '../../utils/payment';
 import { customKey } from '../../utils/sales';
 import { buildCustomerWhatsAppReplyLink } from '../../utils/phone';
 
-const statuses = [
+const ALL_STATUSES = [
   'Menunggu Harga Owner',
   'Harga Ditetapkan',
   'Diproses',
   'Selesai',
   'Dibatalkan',
 ];
+
+const FORWARD_STATUSES = ['Harga Ditetapkan', 'Diproses', 'Selesai', 'Dibatalkan'];
 
 const TAB_ITEMS = [
   { key: 'Belum Direspon', label: 'Belum Direspon' },
@@ -68,13 +73,20 @@ const TAB_ITEMS = [
 const CATEGORY_OPTIONS = CUSTOM_CATEGORIES.filter((c) => c !== 'Semua');
 const onlyDigits = (val) => String(val ?? '').replace(/\D/g, '');
 
-// Hilangkan status lama "Baru" & "Menunggu Konfirmasi WA"
+const hasActivePayments = (order) =>
+  Array.isArray(order?.paymentRecords) &&
+  order.paymentRecords.some(
+    (r) => r.status === 'Terverifikasi' || r.status === 'Menunggu Verifikasi',
+  );
+
+const isOrderPriceLocked = (order) => Boolean(order?.priceAgreedAt) || hasActivePayments(order);
+
+// Otomatis rapikan status lama agar pesanan yang sudah punya harga/pembayaran tidak kembali ke Belum Direspon
 const normalizeOrderStatus = (order) => {
   const s = order?.status;
-  if (s === 'Baru' || s === 'Menunggu Konfirmasi WA') {
-    return order?.finalPrice != null && Number(order.finalPrice) > 0
-      ? 'Harga Ditetapkan'
-      : 'Menunggu Harga Owner';
+  const hasFinal = order?.finalPrice != null && Number(order.finalPrice) > 0;
+  if (s === 'Baru' || s === 'Menunggu Konfirmasi WA' || s === 'Menunggu Harga Owner') {
+    return hasFinal || isOrderPriceLocked(order) ? 'Harga Ditetapkan' : 'Menunggu Harga Owner';
   }
   return s || 'Menunggu Harga Owner';
 };
@@ -346,7 +358,7 @@ function PaymentSettingsModal({ settings, onSave, onClose }) {
   );
 }
 
-/* ==================== TAB 1: DETAIL DESAIN & HARGA FINAL ==================== */
+/* ==================== TAB 1: DETAIL DESAIN, KUNCI HARGA & ADENDUM ==================== */
 function CustomDesignPanel({ custom, onOpenPhoto }) {
   const [view, setView] = useState('front');
   const [showScale, setShowScale] = useState(true);
@@ -447,7 +459,13 @@ function CustomDesignPanel({ custom, onOpenPhoto }) {
   );
 }
 
-function OwnerPricingForm({ order, onSave }) {
+function OwnerPricingForm({ order, onSave, onProposeAdjustment, onCancelAdjustment }) {
+  const isLocked = isOrderPriceLocked(order);
+  const displayStatus = normalizeOrderStatus(order);
+  const paySummary = getPaymentSummary(order);
+  const adj = order.priceAdjustment || null;
+  const priceHistory = Array.isArray(order.priceHistory) ? order.priceHistory : [];
+
   const [priceInput, setPriceInput] = useState(
     order.finalPrice != null
       ? onlyDigits(order.finalPrice)
@@ -456,75 +474,318 @@ function OwnerPricingForm({ order, onSave }) {
   const [noteInput, setNoteInput] = useState(order.ownerNote || '');
   const [saving, setSaving] = useState(false);
 
+  // State form Adendum Penyesuaian Harga
+  const [showAdjForm, setShowAdjForm] = useState(false);
+  const [adjPrice, setAdjPrice] = useState('');
+  const [adjReason, setAdjReason] = useState('');
+  const [submittingAdj, setSubmittingAdj] = useState(false);
+
+  useEffect(() => {
+    setPriceInput(
+      order.finalPrice != null
+        ? onlyDigits(order.finalPrice)
+        : onlyDigits(order.estimatedPrice || order.total || ''),
+    );
+    setNoteInput(order.ownerNote || '');
+  }, [order.finalPrice, order.ownerNote, order.estimatedPrice, order.total]);
+
   const numericPrice = Number(onlyDigits(priceInput)) || 0;
+  const numericAdjPrice = Number(onlyDigits(adjPrice)) || 0;
+  const adjTooLow = numericAdjPrice > 0 && numericAdjPrice < paySummary.paidAmount;
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!numericPrice || numericPrice <= 0) {
-      toast.error('Masukkan nominal harga final (angka saja).');
-      return;
-    }
     setSaving(true);
     try {
-      await onSave(order.id, {
-        finalPrice: numericPrice,
-        ownerNote: noteInput.trim(),
-      });
-      toast.success(
-        `Harga final ${order.orderCode || `#${order.id}`} disimpan & dipindahkan ke Harga Ditetapkan.`,
-      );
+      if (isLocked) {
+        await onSave(order.id, { ownerNote: noteInput.trim() });
+        toast.success('Catatan untuk pelanggan diperbarui.');
+      } else {
+        if (!numericPrice || numericPrice <= 0) {
+          toast.error('Masukkan nominal harga final (angka saja).');
+          return;
+        }
+        await onSave(order.id, {
+          finalPrice: numericPrice,
+          ownerNote: noteInput.trim(),
+        });
+        toast.success(
+          `Harga final ${order.orderCode || `#${order.id}`} disimpan & menunggu persetujuan pelanggan.`,
+        );
+      }
     } finally {
       setSaving(false);
     }
   };
 
-  return (
-    <form onSubmit={handleSave} className="mt-4 rounded-xl border border-line bg-cream/60 p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-espresso">
-          <Tag size={13} className="text-gold-dark" /> Harga Final Owner
-        </p>
-        {order.finalPrice != null && (
-          <span className="text-xs font-semibold text-emerald-700">
-            Aktif: {formatRupiah(order.finalPrice)}
-          </span>
-        )}
-      </div>
+  const handleProposeAdjustment = async (e) => {
+    e.preventDefault();
+    if (!numericAdjPrice || numericAdjPrice < 1000) {
+      toast.error('Masukkan nominal harga penyesuaian yang valid.');
+      return;
+    }
+    if (numericAdjPrice === Number(order.finalPrice)) {
+      toast.error('Harga penyesuaian harus berbeda dari harga saat ini.');
+      return;
+    }
+    if (numericAdjPrice < paySummary.paidAmount) {
+      toast.error(
+        `Harga baru tidak boleh lebih kecil dari pembayaran yang sudah terverifikasi (${formatRupiah(paySummary.paidAmount)}).`,
+      );
+      return;
+    }
+    if (adjReason.trim().length < 5) {
+      toast.error('Tuliskan alasan penyesuaian harga minimal 5 karakter.');
+      return;
+    }
+    setSubmittingAdj(true);
+    try {
+      await onProposeAdjustment(order.id, {
+        proposedPrice: numericAdjPrice,
+        reason: adjReason.trim(),
+      });
+      toast.success('Pengajuan penyesuaian harga terkirim ke pelanggan untuk disetujui.');
+      setShowAdjForm(false);
+      setAdjPrice('');
+      setAdjReason('');
+    } finally {
+      setSubmittingAdj(false);
+    }
+  };
 
-      <div className="grid gap-3 sm:grid-cols-12">
-        <div className="sm:col-span-4">
-          <label className="mb-1 block text-xs text-muted">Harga Final (Angka)</label>
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            autoComplete="off"
-            value={priceInput}
-            onChange={(e) => setPriceInput(onlyDigits(e.target.value))}
-            placeholder="Contoh: 5000000"
-            className="field !py-2 font-mono text-sm font-semibold"
-          />
-          {numericPrice > 0 && (
-            <p className="mt-1 text-[11px] font-semibold text-teak">= {formatRupiah(numericPrice)}</p>
-          )}
+  const canProposeAdj =
+    isLocked &&
+    displayStatus !== 'Selesai' &&
+    displayStatus !== 'Dibatalkan' &&
+    adj?.status !== 'pending';
+
+  return (
+    <div className="mt-4 space-y-3">
+      <form onSubmit={handleSave} className="rounded-xl border border-line bg-cream/60 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-espresso">
+            {isLocked ? (
+              <>
+                <Lock size={13} className="text-emerald-700" /> Harga Final Disepakati &amp; Terkunci
+              </>
+            ) : (
+              <>
+                <Tag size={13} className="text-gold-dark" /> Penetapan Harga Final Owner
+              </>
+            )}
+          </p>
+
+          {isLocked ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
+              <CheckCircle2 size={12} /> {formatRupiah(order.finalPrice)}
+              {order.priceAgreedAt && (
+                <span className="font-normal">
+                  · {new Date(order.priceAgreedAt).toLocaleDateString('id-ID', { dateStyle: 'medium' })}
+                </span>
+              )}
+            </span>
+          ) : order.finalPrice != null ? (
+            <span className="text-xs font-semibold text-amber-800">
+              Menunggu persetujuan pelanggan (masih bisa direvisi)
+            </span>
+          ) : null}
         </div>
-        <div className="sm:col-span-6">
-          <label className="mb-1 block text-xs text-muted">Catatan untuk Pelanggan</label>
-          <input
-            type="text"
-            value={noteInput}
-            onChange={(e) => setNoteInput(e.target.value)}
-            placeholder="Mis. Sudah termasuk ongkir Kota Jambi"
-            className="field !py-2 text-sm"
-          />
+
+        <div className="grid gap-3 sm:grid-cols-12">
+          <div className="sm:col-span-4">
+            <label className="mb-1 block text-xs text-muted">
+              {isLocked ? 'Harga Final (Terkunci)' : 'Harga Final (Angka)'}
+            </label>
+            {isLocked ? (
+              <div className="flex min-h-[40px] items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2 font-mono text-sm font-bold text-espresso">
+                <span>{formatRupiah(order.finalPrice)}</span>
+                <Lock size={14} className="text-emerald-700" />
+              </div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="off"
+                  value={priceInput}
+                  onChange={(e) => setPriceInput(onlyDigits(e.target.value))}
+                  placeholder="Contoh: 5000000"
+                  className="field !py-2 font-mono text-sm font-semibold"
+                />
+                {numericPrice > 0 && (
+                  <p className="mt-1 text-[11px] font-semibold text-teak">
+                    = {formatRupiah(numericPrice)}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="sm:col-span-6">
+            <label className="mb-1 block text-xs text-muted">Catatan untuk Pelanggan</label>
+            <input
+              type="text"
+              value={noteInput}
+              onChange={(e) => setNoteInput(e.target.value)}
+              placeholder="Mis. Sudah termasuk ongkir Kota Jambi"
+              className="field !py-2 text-sm"
+            />
+          </div>
+
+          <div className="flex items-start sm:col-span-2 sm:pt-[22px]">
+            <button type="submit" disabled={saving} className="btn-primary !min-h-[40px] w-full text-xs">
+              {saving ? '...' : isLocked ? 'Simpan Catatan' : 'Simpan'}
+            </button>
+          </div>
         </div>
-        <div className="flex items-start sm:col-span-2 sm:pt-[22px]">
-          <button type="submit" disabled={saving} className="btn-primary !min-h-[40px] w-full text-xs">
-            {saving ? '...' : 'Simpan'}
+
+        {canProposeAdj && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-3">
+            <p className="text-[11px] text-muted">
+              Harga kayu jati melonjak atau ada perubahan spesifikasi? Ajukan adendum resmi agar disetujui pelanggan.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAdjForm((v) => !v);
+                if (!adjPrice) setAdjPrice(onlyDigits(order.finalPrice));
+              }}
+              className="btn-soft !min-h-[34px] !px-3 text-xs"
+            >
+              <FileText size={13} className="text-gold-dark" />
+              {showAdjForm ? 'Tutup Form Adendum' : 'Ajukan Penyesuaian Harga'}
+            </button>
+          </div>
+        )}
+      </form>
+
+      {/* Form Pengajuan Penyesuaian Harga (Adendum Dua Arah) */}
+      {showAdjForm && canProposeAdj && (
+        <form onSubmit={handleProposeAdjustment} className="rounded-xl border border-amber-300 bg-amber-50/60 p-4">
+          <p className="mb-2.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-900">
+            <AlertTriangle size={14} className="text-amber-700" />
+            Ajukan Penyesuaian Harga Resmi (Menunggu Persetujuan Pelanggan)
+          </p>
+          <div className="grid gap-3 sm:grid-cols-12">
+            <div className="sm:col-span-4">
+              <label className="mb-1 block text-xs font-semibold text-bark">
+                Harga Baru Usulan (Angka)
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="off"
+                value={adjPrice}
+                onChange={(e) => setAdjPrice(onlyDigits(e.target.value))}
+                placeholder="Mis. 5500000"
+                className={`field !py-2 font-mono text-sm font-bold ${
+                  adjTooLow ? '!border-red-500 !bg-red-50' : ''
+                }`}
+                required
+              />
+              {numericAdjPrice > 0 && (
+                <p className="mt-1 text-[11px] font-semibold text-teak">
+                  = {formatRupiah(numericAdjPrice)}
+                </p>
+              )}
+              {adjTooLow && (
+                <p className="mt-1 text-[11px] font-semibold text-red-600">
+                  Min. {formatRupiah(paySummary.paidAmount)} (sudah terbayar).
+                </p>
+              )}
+            </div>
+            <div className="sm:col-span-6">
+              <label className="mb-1 block text-xs font-semibold text-bark">
+                Alasan Penyesuaian (wajib jelas bagi pelanggan)
+              </label>
+              <input
+                type="text"
+                value={adjReason}
+                onChange={(e) => setAdjReason(e.target.value)}
+                placeholder="Mis. Kenaikan bahan baku kayu jati / tambahan ukuran sesuai diskusi WA"
+                className="field !py-2 text-sm"
+                required
+              />
+            </div>
+            <div className="flex items-start sm:col-span-2 sm:pt-[22px]">
+              <button
+                type="submit"
+                disabled={submittingAdj || adjTooLow || numericAdjPrice < 1000}
+                className="btn-primary !min-h-[40px] w-full text-xs disabled:opacity-50"
+              >
+                {submittingAdj ? '...' : 'Ajukan'}
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
+
+      {/* Status Pengajuan Penyesuaian Harga Pending / Rejected */}
+      {adj?.status === 'pending' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs">
+          <div>
+            <p className="font-bold text-amber-900">
+              Menunggu Persetujuan Pelanggan: {formatRupiah(adj.previousPrice)} →{' '}
+              {formatRupiah(adj.proposedPrice)}
+            </p>
+            <p className="mt-0.5 text-bark">Alasan: {adj.reason}</p>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              await onCancelAdjustment(order.id);
+              toast.info('Pengajuan penyesuaian harga dibatalkan.');
+            }}
+            className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 font-bold text-amber-900 hover:bg-amber-100"
+          >
+            Batalkan Pengajuan
           </button>
         </div>
-      </div>
-    </form>
+      )}
+
+      {adj?.status === 'rejected' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs">
+          <div>
+            <p className="font-bold text-red-800">
+              Pelanggan Menolak Penyesuaian Harga ({formatRupiah(adj.proposedPrice)})
+            </p>
+            <p className="mt-0.5 text-red-700">
+              Harga tetap {formatRupiah(order.finalPrice)}.
+              {adj.customerNote ? ` Catatan pelanggan: "${adj.customerNote}"` : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              await onCancelAdjustment(order.id);
+              toast.info('Notifikasi penolakan ditutup.');
+            }}
+            className="rounded-lg border border-red-300 bg-white px-3 py-1.5 font-semibold text-red-700 hover:bg-red-100"
+          >
+            Tutup
+          </button>
+        </div>
+      )}
+
+      {/* Riwayat Penyesuaian Harga yang Disetujui */}
+      {priceHistory.length > 0 && (
+        <div className="rounded-xl border border-line bg-white p-3 text-xs">
+          <p className="flex items-center gap-1 font-bold uppercase tracking-wider text-muted">
+            <History size={12} /> Riwayat Adendum Harga Disetujui ({priceHistory.length})
+          </p>
+          <div className="mt-1.5 space-y-1">
+            {priceHistory.map((h, i) => (
+              <p key={h.id || i} className="text-bark">
+                • {formatRupiah(h.previousPrice)} → <strong>{formatRupiah(h.newPrice)}</strong>{' '}
+                <span className="text-muted">({h.reason})</span>
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -582,7 +843,7 @@ function PaymentTabPanel({
             ? `Setoran ke-${summary.verifiedRecords.length + 1}`
             : 'Pembayaran Tunai'),
       });
-      toast.success('Pembayaran dicatat & langsung mengurangi sisa tagihan.');
+      toast.success('Pembayaran dicatat, harga terkunci & sisa tagihan diperbarui.');
       setAmount('');
       setNote('');
       setShowAdd(false);
@@ -1148,6 +1409,8 @@ function OrderCard({
   isHighlighted,
   onUpdateStatus,
   onUpdateOrder,
+  onProposeAdjustment,
+  onCancelAdjustment,
   onRemoveOrder,
   onPublishOrder,
   onTogglePublish,
@@ -1161,6 +1424,11 @@ function OrderCard({
   const paySummary = getPaymentSummary(order);
   const pendingPayCount = paySummary.pendingRecords.length;
   const customerWaLink = buildCustomerWhatsAppReplyLink(order);
+  const hasFinal = order.finalPrice != null && Number(order.finalPrice) > 0;
+  const isLocked = isOrderPriceLocked(order);
+
+  // Blokir status mundur ke "Menunggu Harga Owner" jika harga sudah ditetapkan atau ada pembayaran
+  const allowedStatuses = hasFinal || isLocked ? FORWARD_STATUSES : ALL_STATUSES;
 
   const [activeTab, setActiveTab] = useState(focusedTab || (pendingPayCount > 0 ? 'payment' : null));
 
@@ -1203,9 +1471,24 @@ function OrderCard({
               <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusStyle[displayStatus] || 'bg-sand text-bark border-line'}`}>
                 {displayStatus}
               </span>
+              {hasFinal && isLocked && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">
+                  <Lock size={10} /> Harga Terkunci
+                </span>
+              )}
               {pendingPayCount > 0 && (
                 <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-[11px] font-bold text-white">
                   {pendingPayCount} Bukti Bayar Perlu Dicek
+                </span>
+              )}
+              {order.priceAdjustment?.status === 'pending' && (
+                <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-900">
+                  Adendum Harga Menunggu
+                </span>
+              )}
+              {order.priceAdjustment?.status === 'rejected' && (
+                <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-[11px] font-bold text-red-700">
+                  Adendum Ditolak
                 </span>
               )}
             </div>
@@ -1239,6 +1522,8 @@ function OrderCard({
               <span className="text-muted">{order.payment} · </span>
               {paySummary.bill <= 0 ? (
                 <span className="text-amber-700">Menunggu Harga</span>
+              ) : !isLocked ? (
+                <span className="text-amber-700">Menunggu Setuju Pelanggan</span>
               ) : paySummary.isPaidOff ? (
                 <span className="text-emerald-700">LUNAS</span>
               ) : (
@@ -1306,19 +1591,29 @@ function OrderCard({
             <select
               aria-label="Ubah status pesanan"
               value={displayStatus}
-              onChange={(e) => {
+              onChange={async (e) => {
                 const nextStatus = e.target.value;
-                if ((nextStatus === 'Diproses' || nextStatus === 'Selesai') && order.finalPrice == null) {
+                if ((nextStatus === 'Diproses' || nextStatus === 'Selesai') && !hasFinal) {
                   toast.error('Tetapkan Harga Final dulu di tab Detail & Harga.');
                   setActiveTab('detail');
                   return;
                 }
-                onUpdateStatus(order.id, nextStatus);
-                toast.success(`Status diubah ke ${nextStatus}`);
+                if (nextStatus === 'Dibatalkan' && paySummary.paidAmount > 0) {
+                  const ok = window.confirm(
+                    `Pesanan ini sudah memiliki pembayaran terverifikasi sebesar ${formatRupiah(paySummary.paidAmount)}. Pastikan pengembalian dana (refund) telah disepakati dengan pelanggan. Tetap batalkan pesanan?`,
+                  );
+                  if (!ok) return;
+                }
+                try {
+                  await onUpdateStatus(order.id, nextStatus);
+                  toast.success(`Status diubah ke ${nextStatus}`);
+                } catch {
+                  // Error sudah ditangani di AppContext
+                }
               }}
               className="field !min-h-[36px] !w-auto !py-1.5 text-xs font-semibold"
             >
-              {statuses.map((s) => (
+              {allowedStatuses.map((s) => (
                 <option key={s}>{s}</option>
               ))}
             </select>
@@ -1405,7 +1700,12 @@ function OrderCard({
                 </p>
               )}
 
-              <OwnerPricingForm order={order} onSave={onUpdateOrder} />
+              <OwnerPricingForm
+                order={order}
+                onSave={onUpdateOrder}
+                onProposeAdjustment={onProposeAdjustment}
+                onCancelAdjustment={onCancelAdjustment}
+              />
             </div>
           )}
 
@@ -1443,6 +1743,8 @@ export default function Orders() {
     customPortfolio,
     updateOrderStatus,
     updateOrder,
+    proposePriceAdjustment,
+    cancelPriceAdjustment,
     removeOrder,
     publishCustomOrder,
     togglePortfolioPublish,
@@ -1483,7 +1785,7 @@ export default function Orders() {
     [orders],
   );
 
-  // Tangkap klik notifikasi dari halaman admin lain (?orderId=...&tab=payment)
+  // Tangkap klik notifikasi dari lonceng di header atas (?orderId=...&tab=...)
   useEffect(() => {
     const qOrderId = searchParams.get('orderId');
     const qTab = searchParams.get('tab') || 'payment';
@@ -1492,7 +1794,7 @@ export default function Orders() {
     setSearchParams({}, { replace: true });
   }, [searchParams, orders.length, jumpToOrder, setSearchParams]);
 
-  // Daftar notifikasi cicilan / konfirmasi pembayaran yang menunggu verifikasi
+  // Strip notifikasi khusus bukti pembayaran / cicilan yang menunggu diverifikasi
   const pendingPaymentAlerts = useMemo(() => {
     const items = [];
     orders.forEach((order) => {
@@ -1547,21 +1849,20 @@ export default function Orders() {
   return (
     <div>
       <PageHeader
-     title="Pesanan Masuk"
-     desc="Pesanan baru tampil di Belum Direspon. Begitu Anda respon, pesanan otomatis berpindah ke tab statusnya."
-     action={
-       <button
-         type="button"
-         onClick={() => setShowSettingsModal(true)}
-         className="btn-soft !min-h-[42px] text-xs sm:text-sm"
-       >
-         <Settings2 size={15} className="text-gold-dark" />
-         Rekening &amp; QRIS ({bankCount})
-       </button>
-     }
-   />
+        title="Pesanan Masuk"
+        desc="Pesanan baru tampil di Belum Direspon. Begitu Anda menetapkan harga, status otomatis maju dan tidak dapat dikembalikan mundur."
+        action={
+          <button
+            type="button"
+            onClick={() => setShowSettingsModal(true)}
+            className="btn-soft !min-h-[42px] text-xs sm:text-sm"
+          >
+            <Settings2 size={15} className="text-gold-dark" />
+            Rekening &amp; QRIS ({bankCount})
+          </button>
+        }
+      />
 
-      {/* Strip Notifikasi Cepat: Pembayaran / Cicilan Menunggu Konfirmasi */}
       {pendingPaymentAlerts.length > 0 && (
         <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50/80 p-3.5 shadow-soft">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-900">
@@ -1694,6 +1995,8 @@ export default function Orders() {
                 isHighlighted={Number(highlightedId) === Number(o.id)}
                 onUpdateStatus={updateOrderStatus}
                 onUpdateOrder={updateOrder}
+                onProposeAdjustment={proposePriceAdjustment}
+                onCancelAdjustment={cancelPriceAdjustment}
                 onRemoveOrder={removeOrder}
                 onPublishOrder={publishCustomOrder}
                 onTogglePublish={togglePortfolioPublish}

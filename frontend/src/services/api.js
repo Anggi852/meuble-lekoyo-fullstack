@@ -131,12 +131,20 @@ export const api = {
     http.put(`/custom-portfolio/${id}`, payload).then((r) => r.data.data),
   deleteCustomPortfolio: (id) => http.delete(`/custom-portfolio/${id}`).then((r) => r.data),
 
-  // Orders & Pembayaran (Tunai / Sistem Tabung)
+  // Orders, Kesepakatan Harga & Pembayaran (Tunai / Sistem Tabung)
   getOrders: () => http.get('/orders').then((r) => r.data.data),
   getMyOrders: () => http.get('/orders/me').then((r) => r.data.data),
   createOrder: (payload) => http.post('/orders', payload).then((r) => r.data.data),
   updateOrder: (id, patch) => http.patch(`/orders/${id}`, patch).then((r) => r.data.data),
   deleteOrder: (id) => http.delete(`/orders/${id}`).then((r) => r.data),
+  agreeOrderPrice: (orderId) =>
+    http.post(`/orders/${orderId}/agree-price`).then((r) => r.data.data),
+  proposePriceAdjustment: (orderId, payload) =>
+    http.post(`/orders/${orderId}/price-adjustment`, payload).then((r) => r.data.data),
+  cancelPriceAdjustment: (orderId) =>
+    http.delete(`/orders/${orderId}/price-adjustment`).then((r) => r.data.data),
+  respondPriceAdjustment: (orderId, payload) =>
+    http.post(`/orders/${orderId}/price-adjustment/respond`, payload).then((r) => r.data.data),
   addOrderPayment: (orderId, payload) =>
     http.post(`/orders/${orderId}/payments`, payload).then((r) => r.data.data),
   verifyOrderPayment: (orderId, paymentId, payload) =>
