@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { Loader2, MapPin, MessageCircle, ShieldCheck, X } from 'lucide-react';
+import { Loader2, MapPin, MessageCircle, Ruler, ShieldCheck, X } from 'lucide-react';
 import Modal from './Modal';
 import { buildWhatsAppLink } from '../services/whatsapp';
 import { formatRupiah } from '../utils/format';
@@ -19,7 +19,12 @@ const schema = yup.object({
     .matches(ID_PHONE_REGEX, 'Gunakan nomor WhatsApp Indonesia yang valid (contoh: 081234567890)')
     .required('Nomor WhatsApp aktif wajib diisi'),
   address: yup.string().trim().min(4, 'Tuliskan kota & alamat lebih lengkap').required('Alamat wajib diisi'),
-  quantity: yup.number().typeError('Jumlah harus angka').min(1, 'Minimal 1').max(50, 'Maksimal 50 unit').required('Jumlah wajib diisi'),
+  quantity: yup
+    .number()
+    .typeError('Jumlah harus angka')
+    .min(1, 'Minimal 1')
+    .max(50, 'Maksimal 50 unit')
+    .required('Jumlah wajib diisi'),
   payment: yup.string().oneOf(['Tunai', 'Tabung'], 'Pilih metode pembayaran').required('Pilih metode pembayaran'),
   agreedToTerms: yup
     .boolean()
@@ -32,15 +37,29 @@ const Label = ({ htmlFor, children }) => (
     {children}
   </label>
 );
-const Err = ({ e }) => (e ? <p className="mt-1.5 text-sm font-medium text-red-600" role="alert">{e.message}</p> : null);
+const Err = ({ e }) =>
+  e ? (
+    <p className="mt-1.5 text-sm font-medium text-red-600" role="alert">
+      {e.message}
+    </p>
+  ) : null;
 
-export default function OrderModal({ product, onClose }) {
+export default function OrderModal({ product, customItem, onClose }) {
   const { addOrder, user } = useApp();
   const [submitting, setSubmitting] = useState(false);
   const [locating, setLocating] = useState(false);
   const [coords, setCoords] = useState(null);
 
-  const { register, handleSubmit, control, formState: { errors } } = useForm({
+  const isCustomDirect = Boolean(customItem);
+  const item = customItem || product || null;
+  const unitPrice = Number(item?.price) || 0;
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors },
+  } = useForm({
     resolver: yupResolver(schema),
     defaultValues: {
       name: user?.name || '',
@@ -51,7 +70,7 @@ export default function OrderModal({ product, onClose }) {
   });
 
   const [watchedQty, payment] = useWatch({ control, name: ['quantity', 'payment'] });
-  const total = product.price * Math.max(Number(watchedQty) || 0, 0);
+  const total = unitPrice * Math.max(Number(watchedQty) || 0, 0);
 
   const handleGetLocation = () => {
     if (!navigator.geolocation) {
@@ -77,34 +96,73 @@ export default function OrderModal({ product, onClose }) {
   };
 
   const onSubmit = async (data) => {
-    if (submitting) return;
+    if (submitting || !item) return;
     setSubmitting(true);
     const cleanPhone = normalizePhone(data.phone);
-    const estimatedPrice = product.price * Number(data.quantity);
+    const qty = Number(data.quantity) || 1;
+    const estimatedPrice = unitPrice * qty;
 
     try {
-      const created = await addOrder({
-        name: data.name.trim(),
-        phone: cleanPhone,
-        address: data.address.trim(),
-        quantity: Number(data.quantity),
-        payment: data.payment,
-        agreedToTerms: true,
-        productId: product.id,
-        product: product.name,
-        total: estimatedPrice,
-        estimatedPrice,
-        customerEmail: user?.email || '',
-        latitude: coords?.latitude ?? null,
-        longitude: coords?.longitude ?? null,
-      });
+      const payload = isCustomDirect
+        ? {
+            name: data.name.trim(),
+            phone: cleanPhone,
+            address: data.address.trim(),
+            quantity: qty,
+            payment: data.payment,
+            agreedToTerms: true,
+            productId: null,
+            product: `Custom (${customItem?.category || 'Custom'}): ${customItem?.name || 'Karya Custom'} (${customItem?.size || 'Model Sama'})`,
+            total: estimatedPrice,
+            estimatedPrice,
+            customerEmail: user?.email || '',
+            latitude: coords?.latitude ?? null,
+            longitude: coords?.longitude ?? null,
+            custom: {
+              title: customItem?.name || 'Karya Custom',
+              categoryLabel: customItem?.category || 'Bebas Request',
+              size: customItem?.size || 'Sesuai karya referensi',
+              finish: customItem?.finish || 'Natural Jati (Doff)',
+              options: `Pesan langsung model sama dari Karya Pernah Dicustom${customItem?.description ? ` — ${customItem.description}` : ''}`,
+              fromPortfolioId: customItem?.id,
+              design: customItem?.preset
+                ? {
+                    type: customItem?.typeKey || 'lainnya',
+                    dims: customItem.preset.dims,
+                    opts: customItem.preset.opts || {},
+                    finish: customItem.preset.finish || 'natural',
+                    sheen: 'doff',
+                  }
+                : undefined,
+            },
+          }
+        : {
+            name: data.name.trim(),
+            phone: cleanPhone,
+            address: data.address.trim(),
+            quantity: qty,
+            payment: data.payment,
+            agreedToTerms: true,
+            productId: product?.id ?? null,
+            product: product?.name || 'Produk Katalog',
+            total: estimatedPrice,
+            estimatedPrice,
+            customerEmail: user?.email || '',
+            latitude: coords?.latitude ?? null,
+            longitude: coords?.longitude ?? null,
+          };
 
+      const created = await addOrder(payload);
       const orderCode = created?.orderCode ? ` [${created.orderCode}]` : '';
+      const waProductLabel = isCustomDirect
+        ? `${customItem?.name || 'Karya Custom'} (${customItem?.size || 'Model Sama'}, ${customItem?.finish || 'Natural Jati'})${orderCode}`
+        : `${product?.name || 'Produk Katalog'}${orderCode}`;
+
       window.open(
         buildWhatsAppLink({
           ...data,
           phone: cleanPhone,
-          product: `${product.name}${orderCode}`,
+          product: waProductLabel,
         }),
         '_blank',
       );
@@ -119,13 +177,31 @@ export default function OrderModal({ product, onClose }) {
     }
   };
 
+  if (!item) return null;
+
   return (
-    <Modal title="Ajukan Pemesanan" onClose={onClose}>
+    <Modal title={isCustomDirect ? 'Pesan Langsung Model Sama' : 'Ajukan Pemesanan'} onClose={onClose}>
       <div className="flex items-center gap-3 rounded-xl bg-cream p-3">
-        <img src={getPrimaryImage(product)} alt="" className="h-16 w-16 rounded-lg object-cover" />
+        <img src={getPrimaryImage(item)} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
         <div className="min-w-0">
-          <p className="font-semibold text-bark">{product.name}</p>
-          <p className="font-bold text-teak">{formatRupiah(product.price)}</p>
+          {isCustomDirect && (
+            <span className="inline-block rounded-full bg-gold/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-teak">
+              Karya Pernah Dicustom · Tanpa Atur Ulang
+            </span>
+          )}
+          <p className="truncate font-semibold text-bark">{item.name}</p>
+          {isCustomDirect && item.size && (
+            <p className="flex items-center gap-1 text-xs text-muted">
+              <Ruler size={11} className="text-teak" /> {item.size} · {item.finish}
+            </p>
+          )}
+          <p className="font-bold text-teak">
+            {unitPrice > 0
+              ? isCustomDirect
+                ? `Ref. ${formatRupiah(unitPrice)}`
+                : formatRupiah(unitPrice)
+              : 'Harga final via Owner'}
+          </p>
         </div>
       </div>
 
@@ -239,14 +315,16 @@ export default function OrderModal({ product, onClose }) {
 
         <div className="rounded-xl bg-sand p-4 text-[15px]">
           <div className="flex items-center justify-between">
-            <span className="text-muted">Perkiraan harga</span>
-            <span className="text-lg font-bold text-teak">{formatRupiah(total)}</span>
+            <span className="text-muted">{unitPrice > 0 ? 'Perkiraan harga' : 'Estimasi harga'}</span>
+            <span className="text-lg font-bold text-teak">
+              {unitPrice > 0 ? formatRupiah(total) : 'Ditetapkan Owner'}
+            </span>
           </div>
           <p className="mt-2 text-sm text-muted">
             {payment === 'Tabung'
               ? 'Sistem tabung: uang muka dan jadwal pembayaran disepakati dengan owner lewat WhatsApp. '
               : ''}
-            Harga akhir dan jadwal pembuatan (±{product.productionTime}) dikonfirmasi owner.
+            Harga akhir dan jadwal pembuatan (±{item.productionTime || '2 bulan'}) dikonfirmasi owner.
           </p>
         </div>
 
