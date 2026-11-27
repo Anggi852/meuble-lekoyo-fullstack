@@ -36,14 +36,25 @@ import { formatRupiah } from '../utils/format';
 import { compressImageFile } from '../utils/image';
 import { getPaymentSummary } from '../utils/payment';
 
+const normalizeStatus = (order) => {
+  const s = order?.status;
+  if (s === 'Baru' || s === 'Menunggu Konfirmasi WA') {
+    return order?.finalPrice != null && Number(order.finalPrice) > 0
+      ? 'Harga Ditetapkan'
+      : 'Menunggu Harga Owner';
+  }
+  return s || 'Menunggu Harga Owner';
+};
+
 const STATUS_STYLE = {
   'Menunggu Harga Owner': 'bg-amber-50 text-amber-800 border-amber-200',
   'Harga Ditetapkan': 'bg-sand text-teak border-gold/40',
-  'Menunggu Konfirmasi WA': 'bg-amber-50 text-amber-800 border-amber-200',
   Diproses: 'bg-espresso/10 text-espresso border-espresso/20',
   Selesai: 'bg-emerald-50 text-emerald-800 border-emerald-200',
   Dibatalkan: 'bg-red-50 text-red-700 border-red-200',
 };
+
+const onlyDigits = (val) => String(val ?? '').replace(/\D/g, '');
 
 export default function MyOrders() {
   const {
@@ -153,7 +164,7 @@ export default function MyOrders() {
   };
 
   const payOrderSummary = payOrder ? getPaymentSummary(payOrder) : null;
-  const numericPayAmount = Number(String(payAmount).replace(/[^\d]/g, '')) || 0;
+  const numericPayAmount = Number(onlyDigits(payAmount)) || 0;
   const isOverRemaining =
     Boolean(payOrderSummary) && numericPayAmount > payOrderSummary.remaining;
 
@@ -161,7 +172,7 @@ export default function MyOrders() {
     e.preventDefault();
     if (!payOrder || !payOrderSummary) return;
     if (!numericPayAmount || numericPayAmount < 1000) {
-      toast.error('Masukkan nominal pembayaran minimal Rp 1.000.');
+      toast.error('Masukkan nominal pembayaran minimal Rp 1.000 (hanya angka).');
       return;
     }
     if (numericPayAmount > payOrderSummary.remaining) {
@@ -239,7 +250,7 @@ export default function MyOrders() {
       `• Produk: ${order.product} (${order.quantity} unit)`,
       `• Sistem Bayar: ${order.payment}`,
       `• ${hargaText}`,
-      `• Status: ${order.status}`,
+      `• Status: ${normalizeStatus(order)}`,
     ].join('\n');
     const sep = WA_BASE.includes('?') ? '&' : '?';
     return `${WA_BASE}${sep}text=${encodeURIComponent(text)}`;
@@ -345,12 +356,13 @@ export default function MyOrders() {
       ) : (
         <div className="space-y-5">
           {myOrders.map((order) => {
-            const badgeClass = STATUS_STYLE[order.status] || 'bg-sand text-espresso border-line';
+            const displayStatus = normalizeStatus(order);
+            const badgeClass = STATUS_STYLE[displayStatus] || 'bg-sand text-espresso border-line';
             const hasFinalPrice =
               order.finalPrice !== null && order.finalPrice !== undefined && Number(order.finalPrice) > 0;
             const estPrice = Number(order.estimatedPrice ?? order.total) || 0;
-            const isDone = order.status === 'Selesai';
-            const isCancelled = order.status === 'Dibatalkan';
+            const isDone = displayStatus === 'Selesai';
+            const isCancelled = displayStatus === 'Dibatalkan';
             const existingReview = testimonials.find((t) => Number(t.orderId) === Number(order.id));
             const paySummary = getPaymentSummary(order);
 
@@ -366,7 +378,7 @@ export default function MyOrders() {
                         {order.orderCode || `#${order.id}`}
                       </span>
                       <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}>
-                        {order.status}
+                        {displayStatus}
                       </span>
                     </div>
                     <h2 className="font-heading mt-2 text-lg font-bold text-espresso">
@@ -750,21 +762,26 @@ export default function MyOrders() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-bark">
-                      Nominal Setoran (Rp)
+                      Nominal Setoran (Angka)
                     </label>
                     <input
-                      type="number"
-                      min="1000"
-                      max={payOrderSummary.remaining}
-                      step="1000"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      autoComplete="off"
                       value={payAmount}
-                      onChange={(e) => setPayAmount(e.target.value)}
+                      onChange={(e) => setPayAmount(onlyDigits(e.target.value))}
                       placeholder={`Maks. ${payOrderSummary.remaining}`}
-                      className={`field !py-2 text-sm font-bold ${
+                      className={`field !py-2 font-mono text-sm font-bold ${
                         isOverRemaining ? '!border-red-500 !bg-red-50/40 !text-red-700' : ''
                       }`}
                       required
                     />
+                    {numericPayAmount > 0 && (
+                      <p className="mt-1 text-[11px] font-semibold text-teak">
+                        = {formatRupiah(numericPayAmount)}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-semibold text-bark">Tanggal</label>
@@ -778,7 +795,6 @@ export default function MyOrders() {
                   </div>
                 </div>
 
-                {/* Peringatan keras jika nominal melewati sisa tagihan */}
                 {isOverRemaining ? (
                   <p className="flex items-start gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
                     <AlertCircle size={14} className="mt-0.5 shrink-0" />

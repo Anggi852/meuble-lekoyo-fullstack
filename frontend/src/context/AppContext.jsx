@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { products as seedProducts } from '../data/products';
 import { getProductImages } from '../utils/image';
@@ -71,6 +71,7 @@ export function AppProvider({ children }) {
 
   const [koyoOpen, setKoyoOpen] = useState(false);
   const [koyoPrompt, setKoyoPrompt] = useState(null);
+  const knownPendingPayIds = useRef(null);
 
   const openKoyoWith = useCallback((text = '', product = null) => {
     setKoyoOpen(true);
@@ -111,7 +112,34 @@ export function AppProvider({ children }) {
         api.getChatLogs(),
         api.getAnalyticsSummary(),
       ]);
-      setOrders(ord || []);
+      const nextOrders = ord || [];
+
+      // Deteksi bukti pembayaran / setoran cicilan baru secara otomatis
+      const currentPendingKeys = new Set();
+      const newlyArrived = [];
+      nextOrders.forEach((o) => {
+        const recs = Array.isArray(o.paymentRecords) ? o.paymentRecords : [];
+        recs.forEach((r) => {
+          if (r.status === 'Menunggu Verifikasi') {
+            const key = `${o.id}:${r.id}`;
+            currentPendingKeys.add(key);
+            if (knownPendingPayIds.current && !knownPendingPayIds.current.has(key)) {
+              newlyArrived.push({ order: o, record: r });
+            }
+          }
+        });
+      });
+
+      if (knownPendingPayIds.current && newlyArrived.length > 0) {
+        const first = newlyArrived[0];
+        const nominal = Number(first.record.amount || 0).toLocaleString('id-ID');
+        toast.info(
+          `Konfirmasi pembayaran baru dari ${first.order.name} (Rp ${nominal}) — ${first.order.orderCode || `#${first.order.id}`}`,
+        );
+      }
+      knownPendingPayIds.current = currentPendingKeys;
+
+      setOrders(nextOrders);
       setSales(sls || []);
       setChatLogs(cht || []);
       setAnalyticsSummary(anl || null);
@@ -225,7 +253,6 @@ export function AppProvider({ children }) {
       });
   }, [loadMyOrders, loadMyWishlist, loadMyActivities]);
 
-  // Sinkron otomatis antar tab/jendela browser (termasuk pesanan & status verifikasi pembayaran)
   useEffect(() => {
     const syncOnFocus = () => {
       if (document.visibilityState && document.visibilityState !== 'visible') return;
@@ -245,11 +272,17 @@ export function AppProvider({ children }) {
     };
   }, [isLoggedIn, user?.email, loadAdminData, loadMyOrders, loadMyWishlist, loadMyActivities]);
 
+  // Polling ringan tiap 20 detik saat Owner login agar notifikasi cicilan / pembayaran langsung masuk
   useEffect(() => {
-    if (isLoggedIn) {
-      loadAdminData();
-      loadPublicData();
-    }
+    if (!isLoggedIn) return undefined;
+    loadAdminData();
+    loadPublicData();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadAdminData();
+      }
+    }, 20000);
+    return () => clearInterval(timer);
   }, [isLoggedIn, loadAdminData, loadPublicData]);
 
   const loginAdmin = async (password) => {
@@ -282,6 +315,7 @@ export function AppProvider({ children }) {
     setMyOrders([]);
     setMyActivities([]);
     setSavedWishlist([]);
+    knownPendingPayIds.current = null;
   };
 
   const logoutAdmin = logoutUser;

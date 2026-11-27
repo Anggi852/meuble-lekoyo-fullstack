@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import {
   ShoppingBag,
@@ -31,10 +32,13 @@ import {
   SlidersHorizontal,
   Search,
   AlertCircle,
+  Bell,
+  ArrowRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useApp } from '../../context/AppContext';
 import { PageHeader, confirmDelete } from '../../components/admin/ui';
+import NotificationBell from '../../components/admin/NotificationBell';
 import Modal from '../../components/Modal';
 import PhotoUploader from '../../components/admin/PhotoUploader';
 import FurniturePreview from '../../components/FurniturePreview';
@@ -49,7 +53,6 @@ import { buildCustomerWhatsAppReplyLink } from '../../utils/phone';
 const statuses = [
   'Menunggu Harga Owner',
   'Harga Ditetapkan',
-  'Menunggu Konfirmasi WA',
   'Diproses',
   'Selesai',
   'Dibatalkan',
@@ -64,16 +67,27 @@ const TAB_ITEMS = [
 ];
 
 const CATEGORY_OPTIONS = CUSTOM_CATEGORIES.filter((c) => c !== 'Semua');
-const normalizeStatus = (s) => (s === 'Baru' ? 'Menunggu Harga Owner' : s);
-const isUnrespondedStatus = (s) => {
-  const n = normalizeStatus(s);
-  return n === 'Menunggu Harga Owner' || n === 'Menunggu Konfirmasi WA';
+const onlyDigits = (val) => String(val ?? '').replace(/\D/g, '');
+
+// Hilangkan status lama "Baru" & "Menunggu Konfirmasi WA"
+const normalizeOrderStatus = (order) => {
+  const s = order?.status;
+  if (s === 'Baru' || s === 'Menunggu Konfirmasi WA') {
+    return order?.finalPrice != null && Number(order.finalPrice) > 0
+      ? 'Harga Ditetapkan'
+      : 'Menunggu Harga Owner';
+  }
+  return s || 'Menunggu Harga Owner';
+};
+
+const statusToFilterTab = (order) => {
+  const st = normalizeOrderStatus(order);
+  return st === 'Menunggu Harga Owner' ? 'Belum Direspon' : st;
 };
 
 const statusStyle = {
   'Menunggu Harga Owner': 'bg-amber-50 text-amber-800 border-amber-200',
   'Harga Ditetapkan': 'bg-sand text-teak border-gold/40',
-  'Menunggu Konfirmasi WA': 'bg-amber-50 text-amber-800 border-amber-200',
   Diproses: 'bg-espresso/10 text-espresso border-espresso/20',
   Selesai: 'bg-emerald-50 text-emerald-800 border-emerald-200',
   Dibatalkan: 'bg-red-50 text-red-700 border-red-200',
@@ -251,9 +265,10 @@ function PaymentSettingsModal({ settings, onSave, onClose }) {
                     />
                     <input
                       type="text"
+                      inputMode="numeric"
                       value={acc.accountNumber}
-                      onChange={(e) => updateAccountRow(idx, 'accountNumber', e.target.value)}
-                      placeholder="No. Rekening"
+                      onChange={(e) => updateAccountRow(idx, 'accountNumber', onlyDigits(e.target.value))}
+                      placeholder="No. Rekening (angka)"
                       className="field !py-2 font-mono text-xs"
                       required
                     />
@@ -435,16 +450,19 @@ function CustomDesignPanel({ custom, onOpenPhoto }) {
 
 function OwnerPricingForm({ order, onSave }) {
   const [priceInput, setPriceInput] = useState(
-    order.finalPrice != null ? String(order.finalPrice) : String(order.estimatedPrice || order.total || ''),
+    order.finalPrice != null
+      ? onlyDigits(order.finalPrice)
+      : onlyDigits(order.estimatedPrice || order.total || ''),
   );
   const [noteInput, setNoteInput] = useState(order.ownerNote || '');
   const [saving, setSaving] = useState(false);
 
+  const numericPrice = Number(onlyDigits(priceInput)) || 0;
+
   const handleSave = async (e) => {
     e.preventDefault();
-    const numericPrice = Number(String(priceInput).replace(/[^\d]/g, ''));
     if (!numericPrice || numericPrice <= 0) {
-      toast.error('Masukkan nominal harga final yang valid.');
+      toast.error('Masukkan nominal harga final (angka saja).');
       return;
     }
     setSaving(true);
@@ -476,16 +494,20 @@ function OwnerPricingForm({ order, onSave }) {
 
       <div className="grid gap-3 sm:grid-cols-12">
         <div className="sm:col-span-4">
-          <label className="mb-1 block text-xs text-muted">Harga Final (Rp)</label>
+          <label className="mb-1 block text-xs text-muted">Harga Final (Angka)</label>
           <input
-            type="number"
-            min="0"
-            step="50000"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            autoComplete="off"
             value={priceInput}
-            onChange={(e) => setPriceInput(e.target.value)}
+            onChange={(e) => setPriceInput(onlyDigits(e.target.value))}
             placeholder="Contoh: 5000000"
-            className="field !py-2 text-sm font-semibold"
+            className="field !py-2 font-mono text-sm font-semibold"
           />
+          {numericPrice > 0 && (
+            <p className="mt-1 text-[11px] font-semibold text-teak">= {formatRupiah(numericPrice)}</p>
+          )}
         </div>
         <div className="sm:col-span-6">
           <label className="mb-1 block text-xs text-muted">Catatan untuk Pelanggan</label>
@@ -497,7 +519,7 @@ function OwnerPricingForm({ order, onSave }) {
             className="field !py-2 text-sm"
           />
         </div>
-        <div className="flex items-end sm:col-span-2">
+        <div className="flex items-start sm:col-span-2 sm:pt-[22px]">
           <button type="submit" disabled={saving} className="btn-primary !min-h-[40px] w-full text-xs">
             {saving ? '...' : 'Simpan'}
           </button>
@@ -534,13 +556,13 @@ function PaymentTabPanel({
     );
   }
 
-  const numericAmount = Number(String(amount).replace(/[^\d]/g, '')) || 0;
+  const numericAmount = Number(onlyDigits(amount)) || 0;
   const isOverRemaining = numericAmount > summary.remaining;
 
   const handleManualAdd = async (e) => {
     e.preventDefault();
     if (!numericAmount || numericAmount < 1000) {
-      toast.error('Masukkan nominal minimal Rp 1.000.');
+      toast.error('Masukkan nominal minimal Rp 1.000 (angka saja).');
       return;
     }
     if (numericAmount > summary.remaining) {
@@ -634,18 +656,21 @@ function PaymentTabPanel({
           <div className="grid gap-2.5 sm:grid-cols-12">
             <div className="sm:col-span-3">
               <input
-                type="number"
-                min="1000"
-                max={summary.remaining}
-                step="1000"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="off"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => setAmount(onlyDigits(e.target.value))}
                 placeholder={`Maks. ${summary.remaining}`}
-                className={`field !py-2 text-xs font-bold ${
+                className={`field !py-2 font-mono text-xs font-bold ${
                   isOverRemaining ? '!border-red-500 !bg-red-50/40 !text-red-700' : ''
                 }`}
                 required
               />
+              {numericAmount > 0 && (
+                <p className="mt-1 text-[10.5px] font-semibold text-teak">= {formatRupiah(numericAmount)}</p>
+              )}
             </div>
             <div className="sm:col-span-3">
               <select value={method} onChange={(e) => setMethod(e.target.value)} className="field !py-2 text-xs">
@@ -657,7 +682,7 @@ function PaymentTabPanel({
             <div className="sm:col-span-2">
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="field !py-2 text-xs" required />
             </div>
-            <div className="flex gap-2 sm:col-span-4">
+            <div className="flex items-start gap-2 sm:col-span-4">
               <input
                 type="text"
                 value={note}
@@ -1016,7 +1041,7 @@ function FinishedTabPanel({
             <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
               <AlertCircle size={15} className="mt-0.5 shrink-0" />
               <span>
-                Periksa <strong>Nama Karya</strong> dan <strong>Kategori Furnitur</strong> sebelum dipublikasikan. Jika barang jadinya misalnya Lemari, ubah kategori ke <strong>Lemari</strong> dan ganti namanya sesuai barang asli (jangan dibiarkan <em>Tangga &amp; Railing Kayu Jati</em>).
+                Periksa <strong>Nama Karya</strong> dan <strong>Kategori Furnitur</strong> sebelum dipublikasikan agar masuk ke kategori yang tepat.
               </span>
             </div>
           )}
@@ -1120,6 +1145,8 @@ function OrderCard({
   orders,
   review,
   linkedPortfolio,
+  focusedTab,
+  isHighlighted,
   onUpdateStatus,
   onUpdateOrder,
   onRemoveOrder,
@@ -1131,12 +1158,19 @@ function OrderCard({
   onOpenReceipt,
   onOpenPhoto,
 }) {
-  const displayStatus = normalizeStatus(order.status);
+  const displayStatus = normalizeOrderStatus(order);
   const paySummary = getPaymentSummary(order);
   const pendingPayCount = paySummary.pendingRecords.length;
   const customerWaLink = buildCustomerWhatsAppReplyLink(order);
 
-  const [activeTab, setActiveTab] = useState(pendingPayCount > 0 ? 'payment' : null);
+  const [activeTab, setActiveTab] = useState(focusedTab || (pendingPayCount > 0 ? 'payment' : null));
+
+  useEffect(() => {
+    if (focusedTab) {
+      setActiveTab(focusedTab);
+    }
+  }, [focusedTab]);
+
   const toggleTab = (tab) => setActiveTab((prev) => (prev === tab ? null : tab));
 
   const same = order.custom
@@ -1145,7 +1179,14 @@ function OrderCard({
   const sameDone = same.filter((x) => x.status === 'Selesai' || x.madeBefore).length;
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-line bg-white shadow-soft transition hover:border-gold/50">
+    <article
+      id={`order-card-${order.id}`}
+      className={`overflow-hidden rounded-2xl border bg-white shadow-soft transition-all duration-300 ${
+        isHighlighted
+          ? 'border-gold ring-4 ring-gold/30'
+          : 'border-line hover:border-gold/50'
+      }`}
+    >
       <div className="p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -1413,16 +1454,74 @@ export default function Orders() {
     savePaymentSettings,
   } = useApp();
 
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState('Belum Direspon');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState(null);
   const [receiptOrder, setReceiptOrder] = useState(null);
+  const [focusState, setFocusState] = useState({ orderId: null, tab: null, stamp: 0 });
+  const [highlightedId, setHighlightedId] = useState(null);
+
+  const jumpToOrder = useCallback(
+    (orderId, tab = 'payment') => {
+      const target = orders.find((o) => Number(o.id) === Number(orderId));
+      if (!target) return;
+      setSearchQuery('');
+      setFilter(statusToFilterTab(target));
+      setFocusState({ orderId: Number(target.id), tab, stamp: Date.now() });
+      setHighlightedId(Number(target.id));
+
+      setTimeout(() => {
+        const el = document.getElementById(`order-card-${target.id}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 120);
+
+      setTimeout(() => {
+        setHighlightedId((cur) => (cur === Number(target.id) ? null : cur));
+      }, 3200);
+    },
+    [orders],
+  );
+
+  // Tangkap klik notifikasi dari halaman admin lain (?orderId=...&tab=payment)
+  useEffect(() => {
+    const qOrderId = searchParams.get('orderId');
+    const qTab = searchParams.get('tab') || 'payment';
+    if (!qOrderId || orders.length === 0) return;
+    jumpToOrder(Number(qOrderId), qTab);
+    setSearchParams({}, { replace: true });
+  }, [searchParams, orders.length, jumpToOrder, setSearchParams]);
+
+  // Daftar notifikasi cicilan / konfirmasi pembayaran yang menunggu verifikasi
+  const pendingPaymentAlerts = useMemo(() => {
+    const items = [];
+    orders.forEach((order) => {
+      const summary = getPaymentSummary(order);
+      summary.pendingRecords.forEach((rec) => {
+        const isFull = summary.remaining > 0 && Number(rec.amount) >= summary.remaining;
+        items.push({
+          key: `${order.id}-${rec.id}`,
+          orderId: order.id,
+          orderCode: order.orderCode || `#${order.id}`,
+          name: order.name,
+          product: order.product,
+          amount: rec.amount,
+          method: rec.method,
+          label: summary.isTabung
+            ? isFull
+              ? 'Pelunasan Tabung'
+              : 'Cicilan Tabung'
+            : 'Bayar Tunai',
+        });
+      });
+    });
+    return items;
+  }, [orders]);
 
   const trimmedQuery = searchQuery.trim().toLowerCase();
 
   const list = useMemo(() => {
-    // Jika Owner mencari ID/Kode/Nama, cari lintas SEMUA status agar komplain langsung ketemu
     if (trimmedQuery) {
       return orders.filter((o) => {
         const hay = [
@@ -1440,39 +1539,71 @@ export default function Orders() {
       });
     }
 
-    if (filter === 'Belum Direspon') {
-      return orders.filter((o) => isUnrespondedStatus(o.status));
-    }
-    return orders.filter((o) => normalizeStatus(o.status) === filter);
+    return orders.filter((o) => statusToFilterTab(o) === filter);
   }, [orders, filter, trimmedQuery]);
 
-  const countForTab = (key) => {
-    if (key === 'Belum Direspon') {
-      return orders.filter((o) => isUnrespondedStatus(o.status)).length;
-    }
-    return orders.filter((o) => normalizeStatus(o.status) === key).length;
-  };
-
+  const countForTab = (key) => orders.filter((o) => statusToFilterTab(o) === key).length;
   const bankCount = paymentSettings?.accounts?.length || 0;
 
   return (
     <div>
       <PageHeader
         title="Pesanan Masuk"
-        desc="Pesanan baru tampil di Belum Direspon. Begitu Anda respon (tetapkan harga / batalkan / proses), pesanan otomatis berpindah ke tab statusnya."
+        desc="Pesanan baru tampil di Belum Direspon. Begitu Anda respon, pesanan otomatis berpindah ke tab statusnya."
         action={
-          <button
-            type="button"
-            onClick={() => setShowSettingsModal(true)}
-            className="btn-soft !min-h-[42px] text-xs sm:text-sm"
-          >
-            <Settings2 size={15} className="text-gold-dark" />
-            Atur Rekening &amp; QRIS ({bankCount})
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <NotificationBell onSelectItem={jumpToOrder} />
+            <button
+              type="button"
+              onClick={() => setShowSettingsModal(true)}
+              className="btn-soft !min-h-[42px] text-xs sm:text-sm"
+            >
+              <Settings2 size={15} className="text-gold-dark" />
+              Rekening &amp; QRIS ({bankCount})
+            </button>
+          </div>
         }
       />
 
-      {/* Kotak Pencarian Cepat berdasarkan Kode/ID Pesanan (cari di semua status) */}
+      {/* Strip Notifikasi Cepat: Pembayaran / Cicilan Menunggu Konfirmasi */}
+      {pendingPaymentAlerts.length > 0 && (
+        <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50/80 p-3.5 shadow-soft">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-900">
+            <Bell size={14} className="text-amber-700" />
+            {pendingPaymentAlerts.length} Konfirmasi Pembayaran / Cicilan Menunggu Dicek
+          </p>
+          <div className="flex flex-col gap-2">
+            {pendingPaymentAlerts.map((al) => (
+              <button
+                key={al.key}
+                type="button"
+                onClick={() => jumpToOrder(al.orderId, 'payment')}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-white px-3.5 py-2.5 text-left text-xs transition hover:border-gold hover:bg-cream"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="rounded bg-espresso px-1.5 py-0.5 font-mono text-[10px] font-bold text-gold-light">
+                      {al.orderCode}
+                    </span>
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                      {al.label}
+                    </span>
+                    <span className="font-bold text-espresso">{al.name}</span>
+                  </div>
+                  <p className="mt-0.5 truncate text-muted">
+                    Mengirim <strong className="text-emerald-700">{formatRupiah(al.amount)}</strong> ({al.method}) · {al.product}
+                  </p>
+                </div>
+                <span className="inline-flex shrink-0 items-center gap-1 font-bold text-teak">
+                  Cek Bukti <ArrowRight size={13} />
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Kotak Pencarian Cepat berdasarkan Kode/ID Pesanan */}
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search
@@ -1554,14 +1685,17 @@ export default function Orders() {
               customPortfolio.find((c) => Number(c.id) === Number(o.publishedPortfolioId)) ||
               customPortfolio.find((c) => Number(c.orderId) === Number(o.id)) ||
               null;
+            const isFocused = Number(focusState.orderId) === Number(o.id);
 
             return (
               <OrderCard
-                key={o.id}
+                key={`${o.id}-${isFocused ? focusState.stamp : 0}`}
                 order={o}
                 orders={orders}
                 review={orderReview}
                 linkedPortfolio={linkedPortfolio}
+                focusedTab={isFocused ? focusState.tab : null}
+                isHighlighted={Number(highlightedId) === Number(o.id)}
                 onUpdateStatus={updateOrderStatus}
                 onUpdateOrder={updateOrder}
                 onRemoveOrder={removeOrder}
