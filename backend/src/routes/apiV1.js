@@ -18,6 +18,8 @@ import {
   customPortfolioSchema,
   orderCreateSchema,
   orderUpdateSchema,
+  priceAdjustmentCreateSchema,
+  priceAdjustmentRespondSchema,
   paymentRecordCreateSchema,
   paymentRecordUpdateSchema,
   paymentSettingsSchema,
@@ -41,6 +43,22 @@ async function logActivitySafe(payload) {
     console.warn('[activity-log] gagal mencatat aktivitas:', err?.message);
     return null;
   }
+}
+
+function hasActivePayments(order) {
+  const records = Array.isArray(order?.paymentRecords) ? order.paymentRecords : [];
+  return records.some((r) => r.status === 'Terverifikasi' || r.status === 'Menunggu Verifikasi');
+}
+
+function isOrderPriceLocked(order) {
+  return Boolean(order?.priceAgreedAt) || hasActivePayments(order);
+}
+
+function getVerifiedPaidTotal(order) {
+  const records = Array.isArray(order?.paymentRecords) ? order.paymentRecords : [];
+  return records
+    .filter((r) => r.status === 'Terverifikasi')
+    .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
 }
 
 /* -------------------- HEALTH & BOOTSTRAP -------------------- */
@@ -382,7 +400,7 @@ router.delete(
   }),
 );
 
-/* -------------------- ORDERS & PEMBAYARAN (TUNAI / TABUNG) -------------------- */
+/* -------------------- ORDERS, KESEPAKATAN HARGA & PEMBAYARAN -------------------- */
 router.get(
   '/orders',
   requireAdmin,
@@ -454,8 +472,35 @@ router.patch(
     if (!existing) return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
 
     const patch = { ...req.body };
-    // Jika Owner menetapkan/mengubah harga final pada pesanan yang belum diproses/selesai,
-    // otomatis pindahkan status ke 'Harga Ditetapkan' (termasuk jika sebelumnya dibatalkan)
+    const hasFinal = existing.finalPrice != null && Number(existing.finalPrice) > 0;
+    const locked = isOrderPriceLocked(existing);
+
+    // Blokir mundur ke status Menunggu Harga Owner jika harga sudah ditetapkan atau ada pembayaran
+    if (
+      patch.status &&
+      ['Menunggu Harga Owner', 'Baru', 'Menunggu Konfirmasi WA'].includes(patch.status) &&
+      (hasFinal || locked)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status tidak dapat dikembalikan ke Menunggu Harga Owner karena harga sudah ditetapkan.',
+      });
+    }
+
+    // Blokir ubah harga sepihak jika harga sudah disepakati pelanggan atau ada pembayaran masuk
+    if (
+      patch.finalPrice !== undefined &&
+      patch.finalPrice !== null &&
+      locked &&
+      Number(patch.finalPrice) !== Number(existing.finalPrice)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Harga sudah disepakati dan terkunci. Gunakan fitur Ajukan Penyesuaian Harga agar disetujui pelanggan terlebih dahulu.',
+      });
+    }
+
+    // Otomatis majukan status ke Harga Ditetapkan saat Owner menetapkan harga final
     if (
       patch.finalPrice !== undefined &&
       patch.finalPrice !== null &&
@@ -465,8 +510,249 @@ router.patch(
     ) {
       patch.status = 'Harga Ditetapkan';
     }
+
     const updated = await db.updateOrder(req.params.id, patch);
     return res.json({ success: true, message: 'Pesanan diperbarui.', data: updated });
+  }),
+);
+
+// Pelanggan menyetujui Harga Final -> harga terkunci & pembayaran terbuka
+router.post(
+  '/orders/:id/agree-price',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const order = await db.getOrderById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
+    }
+    if (String(order.customerEmail || '').toLowerCase() !== String(req.user?.email || '').toLowerCase()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Anda tidak berhak menyetujui harga untuk pesanan ini.',
+      });
+    }
+    if (order.status === 'Dibatalkan') {
+      return res.status(400).json({
+        success: false,
+        message: 'Pesanan yang dibatalkan tidak dapat disetujui.',
+      });
+    }
+    if (order.finalPrice == null || Number(order.finalPrice) <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Menunggu Owner menetapkan Harga Final terlebih dahulu.',
+      });
+    }
+    if (order.priceAgreedAt) {
+      return res.json({
+        success: true,
+        message: 'Harga sudah disepakati sebelumnya.',
+        data: order,
+      });
+    }
+
+    const nowIso = new Date().toISOString();
+    const patch = { priceAgreedAt: nowIso };
+    if (['Menunggu Harga Owner', 'Baru', 'Menunggu Konfirmasi WA'].includes(order.status)) {
+      patch.status = 'Harga Ditetapkan';
+    }
+    const updated = await db.updateOrder(order.id, patch);
+
+    await logActivitySafe({
+      userEmail: req.user.email,
+      userName: req.user.name,
+      action: 'price_agree',
+      targetType: 'order',
+      targetId: String(order.orderCode || order.id),
+      label: `Menyetujui harga final Rp ${Number(order.finalPrice).toLocaleString('id-ID')} untuk ${order.product}`,
+      metadata: {
+        orderId: order.id,
+        orderCode: order.orderCode,
+        finalPrice: Number(order.finalPrice),
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: 'Harga final disepakati dan terkunci! Anda kini dapat melakukan pembayaran.',
+      data: updated,
+    });
+  }),
+);
+
+// Owner mengajukan penyesuaian harga (adendum) dengan alasan wajib
+router.post(
+  '/orders/:id/price-adjustment',
+  requireAdmin,
+  validate(priceAdjustmentCreateSchema),
+  asyncHandler(async (req, res) => {
+    const order = await db.getOrderById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
+    }
+    if (order.status === 'Dibatalkan' || order.status === 'Selesai') {
+      return res.status(400).json({
+        success: false,
+        message: 'Tidak dapat mengajukan penyesuaian harga pada pesanan yang sudah Selesai atau Dibatalkan.',
+      });
+    }
+    const currentPrice = Number(order.finalPrice) || 0;
+    if (currentPrice <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tetapkan Harga Final awal terlebih dahulu.',
+      });
+    }
+
+    const proposedPrice = Number(req.body.proposedPrice);
+    if (proposedPrice === currentPrice) {
+      return res.status(400).json({
+        success: false,
+        message: 'Harga penyesuaian harus berbeda dari harga saat ini.',
+      });
+    }
+
+    const verifiedPaid = getVerifiedPaidTotal(order);
+    if (proposedPrice < verifiedPaid) {
+      return res.status(400).json({
+        success: false,
+        message: `Harga baru tidak boleh lebih kecil dari total pembayaran yang sudah diverifikasi (Rp ${verifiedPaid.toLocaleString('id-ID')}).`,
+      });
+    }
+
+    const adjustment = {
+      id: Date.now(),
+      previousPrice: currentPrice,
+      proposedPrice,
+      reason: req.body.reason.trim(),
+      status: 'pending',
+      requestedAt: new Date().toISOString(),
+      requestedBy: req.user?.name || STORE.owner,
+      respondedAt: null,
+      customerNote: '',
+    };
+
+    const updated = await db.updateOrder(order.id, { priceAdjustment: adjustment });
+    return res.status(201).json({
+      success: true,
+      message: 'Pengajuan penyesuaian harga terkirim ke pelanggan untuk disetujui.',
+      data: updated,
+    });
+  }),
+);
+
+// Owner membatalkan pengajuan penyesuaian harga yang belum direspon pelanggan
+router.delete(
+  '/orders/:id/price-adjustment',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const order = await db.getOrderById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
+    }
+    const updated = await db.updateOrder(order.id, { priceAdjustment: null });
+    return res.json({
+      success: true,
+      message: 'Pengajuan penyesuaian harga dibatalkan.',
+      data: updated,
+    });
+  }),
+);
+
+// Pelanggan menyetujui atau menolak pengajuan penyesuaian harga dari Owner
+router.post(
+  '/orders/:id/price-adjustment/respond',
+  requireAuth,
+  validate(priceAdjustmentRespondSchema),
+  asyncHandler(async (req, res) => {
+    const order = await db.getOrderById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Pesanan tidak ditemukan.' });
+    }
+    if (String(order.customerEmail || '').toLowerCase() !== String(req.user?.email || '').toLowerCase()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Anda tidak berhak merespons penyesuaian harga untuk pesanan ini.',
+      });
+    }
+    const adj = order.priceAdjustment;
+    if (!adj || adj.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'Tidak ada pengajuan penyesuaian harga yang sedang menunggu persetujuan.',
+      });
+    }
+
+    const nowIso = new Date().toISOString();
+    const { decision, note } = req.body;
+
+    if (decision === 'approve') {
+      const verifiedPaid = getVerifiedPaidTotal(order);
+      if (Number(adj.proposedPrice) < verifiedPaid) {
+        return res.status(400).json({
+          success: false,
+          message: 'Harga baru lebih kecil dari pembayaran yang sudah terverifikasi. Hubungi Owner via WhatsApp.',
+        });
+      }
+
+      const historyEntry = {
+        id: adj.id || Date.now(),
+        previousPrice: Number(adj.previousPrice),
+        newPrice: Number(adj.proposedPrice),
+        reason: adj.reason,
+        requestedAt: adj.requestedAt,
+        approvedAt: nowIso,
+        customerNote: note || '',
+      };
+      const nextHistory = [...(Array.isArray(order.priceHistory) ? order.priceHistory : []), historyEntry];
+
+      const updated = await db.updateOrder(order.id, {
+        finalPrice: Number(adj.proposedPrice),
+        priceAgreedAt: order.priceAgreedAt || nowIso,
+        priceAdjustment: null,
+        priceHistory: nextHistory,
+      });
+
+      await logActivitySafe({
+        userEmail: req.user.email,
+        userName: req.user.name,
+        action: 'price_adjustment_approve',
+        targetType: 'order',
+        targetId: String(order.orderCode || order.id),
+        label: `Menyetujui penyesuaian harga menjadi Rp ${Number(adj.proposedPrice).toLocaleString('id-ID')}`,
+        metadata: { orderId: order.id, previousPrice: adj.previousPrice, newPrice: adj.proposedPrice },
+      });
+
+      return res.json({
+        success: true,
+        message: 'Penyesuaian harga disetujui. Tagihan & sisa pembayaran telah diperbarui.',
+        data: updated,
+      });
+    }
+
+    const rejectedAdj = {
+      ...adj,
+      status: 'rejected',
+      respondedAt: nowIso,
+      customerNote: note || '',
+    };
+    const updated = await db.updateOrder(order.id, { priceAdjustment: rejectedAdj });
+
+    await logActivitySafe({
+      userEmail: req.user.email,
+      userName: req.user.name,
+      action: 'price_adjustment_reject',
+      targetType: 'order',
+      targetId: String(order.orderCode || order.id),
+      label: `Menolak penyesuaian harga menjadi Rp ${Number(adj.proposedPrice).toLocaleString('id-ID')}`,
+      metadata: { orderId: order.id, proposedPrice: adj.proposedPrice, note: note || '' },
+    });
+
+    return res.json({
+      success: true,
+      message: 'Penyesuaian harga ditolak. Harga lama tetap berlaku; silakan diskusikan dengan Pak Nanang via WhatsApp.',
+      data: updated,
+    });
   }),
 );
 
@@ -495,6 +781,18 @@ router.post(
           message: 'Pesanan yang dibatalkan tidak dapat menerima pembayaran.',
         });
       }
+      if (!isOrderPriceLocked(order)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Silakan tekan tombol Setujui Harga terlebih dahulu sebelum melakukan pembayaran.',
+        });
+      }
+      if (order.priceAdjustment?.status === 'pending') {
+        return res.status(400).json({
+          success: false,
+          message: 'Ada pengajuan penyesuaian harga dari Owner. Mohon setujui atau tolak terlebih dahulu sebelum mengirim pembayaran.',
+        });
+      }
       if (req.body.method !== 'Tunai di Toko' && !req.body.proofImage) {
         return res.status(400).json({
           success: false,
@@ -512,9 +810,7 @@ router.post(
     }
 
     const existingRecords = Array.isArray(order.paymentRecords) ? order.paymentRecords : [];
-    const verifiedPaid = existingRecords
-      .filter((r) => r.status === 'Terverifikasi')
-      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+    const verifiedPaid = getVerifiedPaidTotal(order);
     const remaining = Math.max(0, bill - verifiedPaid);
 
     if (remaining <= 0) {
@@ -549,7 +845,14 @@ router.post(
     };
 
     const nextRecords = [...existingRecords, record];
-    const updated = await db.updateOrder(order.id, { paymentRecords: nextRecords });
+    const patch = {
+      paymentRecords: nextRecords,
+      priceAgreedAt: order.priceAgreedAt || nowIso,
+    };
+    if (['Menunggu Harga Owner', 'Baru', 'Menunggu Konfirmasi WA'].includes(order.status)) {
+      patch.status = 'Harga Ditetapkan';
+    }
+    const updated = await db.updateOrder(order.id, patch);
 
     if (!isOwner && req.user?.email) {
       await logActivitySafe({
@@ -1045,4 +1348,4 @@ router.post(
   }),
 );
 
-export default router;  
+export default router;
