@@ -16,6 +16,7 @@ import {
 import { toast } from 'sonner';
 import { useApp } from '../../context/AppContext';
 import { LogoMark } from '../Navbar';
+import NotificationBell from './NotificationBell';
 import { getShopStatus } from '../../utils/format';
 
 export default function AdminLayout() {
@@ -32,12 +33,14 @@ export default function AdminLayout() {
     year: 'numeric',
   });
 
-  const newOrders = orders.filter(
-    (o) =>
-      o.status === 'Menunggu Harga Owner' ||
-      o.status === 'Menunggu Konfirmasi WA' ||
-      o.status === 'Baru',
-  ).length;
+  // Hitung hanya pesanan yang benar-benar belum direspon (sama persis dengan tab Belum Direspon)
+  const newOrders = orders.filter((o) => {
+    const s = o?.status;
+    if (s === 'Baru' || s === 'Menunggu Konfirmasi WA') {
+      return !(o?.finalPrice != null && Number(o.finalPrice) > 0);
+    }
+    return s === 'Menunggu Harga Owner';
+  }).length;
 
   const items = [
     { to: '/admin', label: 'Ringkasan', icon: LayoutDashboard, end: true },
@@ -71,7 +74,7 @@ export default function AdminLayout() {
     <div className="flex items-center gap-3">
       <LogoMark size={40} />
       <div className="leading-tight">
-        <p className="font-heading text-lg font-bold text-cream">Meuble Le'Koyo</p>
+        <p className="font-heading text-lg font-bold text-cream">Meuble Le&apos;Koyo</p>
         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold-light">
           Executive Dashboard
         </p>
@@ -139,7 +142,7 @@ export default function AdminLayout() {
       </aside>
 
       <div className="min-w-0 flex flex-col">
-        {/* Topbar Desktop */}
+        {/* Topbar Desktop — Notifikasi tampil konsisten di semua halaman Dashboard */}
         <header className="sticky top-0 z-30 hidden items-center justify-between border-b border-gold/20 bg-cream/90 px-8 py-3.5 backdrop-blur-md lg:flex">
           <div className="flex items-center gap-2.5 text-sm">
             <span className="font-heading text-base font-bold text-espresso">
@@ -151,6 +154,7 @@ export default function AdminLayout() {
             </span>
           </div>
           <div className="flex items-center gap-2.5">
+            <NotificationBell />
             <span
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold shadow-soft ${
                 backendOnline
@@ -184,11 +188,12 @@ export default function AdminLayout() {
           </div>
         </header>
 
-        {/* Header Mobile */}
+        {/* Header Mobile — Lonceng Notifikasi selalu terlihat di pojok kanan atas */}
         <header className="luxury-dark safe-pt sticky top-0 z-30 border-b border-gold/30 lg:hidden">
           <div className="flex items-center justify-between px-4 py-3.5">
             {Brand}
-            <div className="flex gap-1 text-cream/85">
+            <div className="flex items-center gap-1.5 text-cream/85">
+              <NotificationBell compact dark />
               <a
                 href="/"
                 target="_blank"

@@ -38,7 +38,6 @@ import {
 import { toast } from 'sonner';
 import { useApp } from '../../context/AppContext';
 import { PageHeader, confirmDelete } from '../../components/admin/ui';
-import NotificationBell from '../../components/admin/NotificationBell';
 import Modal from '../../components/Modal';
 import PhotoUploader from '../../components/admin/PhotoUploader';
 import FurniturePreview from '../../components/FurniturePreview';
@@ -1548,22 +1547,19 @@ export default function Orders() {
   return (
     <div>
       <PageHeader
-        title="Pesanan Masuk"
-        desc="Pesanan baru tampil di Belum Direspon. Begitu Anda respon, pesanan otomatis berpindah ke tab statusnya."
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            <NotificationBell onSelectItem={jumpToOrder} />
-            <button
-              type="button"
-              onClick={() => setShowSettingsModal(true)}
-              className="btn-soft !min-h-[42px] text-xs sm:text-sm"
-            >
-              <Settings2 size={15} className="text-gold-dark" />
-              Rekening &amp; QRIS ({bankCount})
-            </button>
-          </div>
-        }
-      />
+     title="Pesanan Masuk"
+     desc="Pesanan baru tampil di Belum Direspon. Begitu Anda respon, pesanan otomatis berpindah ke tab statusnya."
+     action={
+       <button
+         type="button"
+         onClick={() => setShowSettingsModal(true)}
+         className="btn-soft !min-h-[42px] text-xs sm:text-sm"
+       >
+         <Settings2 size={15} className="text-gold-dark" />
+         Rekening &amp; QRIS ({bankCount})
+       </button>
+     }
+   />
 
       {/* Strip Notifikasi Cepat: Pembayaran / Cicilan Menunggu Konfirmasi */}
       {pendingPaymentAlerts.length > 0 && (
